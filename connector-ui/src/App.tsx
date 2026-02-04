@@ -157,10 +157,22 @@ function App() {
     try {
       const VALUE_FORWARDER = '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca'
 
-      // Base explicit session on Polygon with a conservative default policy.
-      // We also include fee-token payment permissions (ERC20 transfer -> paymentAddress) so the
+      // Base explicit session permissions (function-scoped, like wallet-dapp-client-cli):
+      // allow forwardValue(to, value) on the ValueForwarder up to our session valueLimit.
+      const forwardValuePermission = Utils.PermissionBuilder.for(VALUE_FORWARDER)
+        .forFunction('function forwardValue(address to, uint256 value)')
+        .withUintNParam(
+          'value',
+          2000000000000000000n,
+          256,
+          Permission.ParameterOperation.LESS_THAN_OR_EQUAL,
+          true,
+        )
+        .build()
+
+      // Also include fee-token payment permissions (ERC20 transfer -> paymentAddress) so the
       // relayer can always pick a fee option without prompting the wallet.
-      const basePermissions: any[] = [{ target: VALUE_FORWARDER, rules: [] }]
+      const basePermissions: any[] = [forwardValuePermission]
 
       const paymentAddress = (feeTokens as any)?.paymentAddress
       const tokens = (feeTokens as any)?.tokens || []
