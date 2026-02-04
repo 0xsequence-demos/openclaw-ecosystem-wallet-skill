@@ -109,6 +109,7 @@ function App() {
   const [walletAddress, setWalletAddress] = useState<string>('')
   const [ciphertext, setCiphertext] = useState<string>('')
   const [balances, setBalances] = useState<BalanceSummary | null>(null)
+  const [feeTokens, setFeeTokens] = useState<any | null>(null)
 
   // Reset local session state every time a new rid is opened.
   useEffect(() => {
@@ -132,6 +133,12 @@ function App() {
     ;(async () => {
       try {
         await dappClient.initialize()
+        // Prefetch fee tokens so the actual Connect click can open the popup synchronously.
+        try {
+          setFeeTokens(await dappClient.getFeeTokens(polygonChainId))
+        } catch {
+          setFeeTokens(null)
+        }
       } catch (e: any) {
         setError(e?.message || String(e))
       }
@@ -155,7 +162,6 @@ function App() {
       // relayer can always pick a fee option without prompting the wallet.
       const basePermissions: any[] = [{ target: VALUE_FORWARDER, rules: [] }]
 
-      const feeTokens = await dappClient.getFeeTokens(polygonChainId).catch(() => ({ isFeeRequired: false }))
       const paymentAddress = (feeTokens as any)?.paymentAddress
       const tokens = (feeTokens as any)?.tokens || []
 
