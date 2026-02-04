@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 
-import { DappClient, TransportMode, WebStorage, jsonReplacers } from '@0xsequence/dapp-client'
+import { DappClient, TransportMode, WebStorage, jsonReplacers, Utils, Permission } from '@0xsequence/dapp-client'
 import { Hex, Signature } from 'ox'
 import sealedbox from 'tweetnacl-sealedbox-js'
 
@@ -148,17 +148,38 @@ function App() {
     }
 
     try {
-      // Create an explicit session on Polygon with a conservative default policy.
+      const VALUE_FORWARDER = '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca'
+
+      // Base explicit session on Polygon with a conservative default policy.
+      // We also include fee-token payment permissions (ERC20 transfer -> paymentAddress) so the
+      // relayer can always pick a fee option without prompting the wallet.
+      const basePermissions: any[] = [{ target: VALUE_FORWARDER, rules: [] }]
+
+      const feeTokens = await dappClient.getFeeTokens(polygonChainId).catch(() => ({ isFeeRequired: false }))
+      const paymentAddress = (feeTokens as any)?.paymentAddress
+      const tokens = (feeTokens as any)?.tokens || []
+
+      const feePermissions: any[] =
+        (feeTokens as any)?.isFeeRequired && paymentAddress && Array.isArray(tokens)
+          ? tokens.map((token: any) => {
+              const decimals = typeof token.decimals === 'number' ? token.decimals : 6
+              const valueLimit = decimals === 18 ? 100000000000000000n : 50n * 10n ** BigInt(decimals)
+
+              // ERC20 transfer(to,paymentAddress,value<=limit)
+              return Utils.PermissionBuilder.for(token.contractAddress)
+                .forFunction('function transfer(address to, uint256 value)')
+                .withUintNParam('value', valueLimit, 256, Permission.ParameterOperation.LESS_THAN_OR_EQUAL, true)
+                .withAddressParam('to', paymentAddress, Permission.ParameterOperation.EQUAL, false)
+                .build()
+            })
+          : []
+
       const sessionConfig = {
         chainId: polygonChainId,
         // Demo default: allow up to 2 POL of native spend (can be tuned)
         valueLimit: 2000000000000000000n,
-        deadline: BigInt(Math.floor(Date.now() / 1000) + 60 * 30),
-        permissions: [
-          // Allow value forwarding to arbitrary recipients (used for native transfers AND fee payments).
-          // dapp-client uses VALUE_FORWARDER_ADDRESS internally when paying native fees.
-          { target: '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca', rules: [] }
-        ]
+        deadline: BigInt(Math.floor(Date.now() / 1000) + 60 * 60 * 24),
+        permissions: [...basePermissions, ...feePermissions]
       }
 
       // Connect will open the wallet UI (popup).
