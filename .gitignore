@@ -1,0 +1,22 @@
+# Node
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+.vite/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Wrangler / Cloudflare
+.wrangler/
+.dev.vars
+
+# OS
+.DS_Store
+
+# Local scratch
+tmp/
