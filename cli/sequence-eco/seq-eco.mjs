@@ -332,16 +332,130 @@ async function main() {
 
     const walletAddress = await keytar.getPassword(SERVICE, `wallet:${name}`)
     const explicitRaw = await keytar.getPassword(SERVICE, `explicitSession:${name}`)
+    const implicitPkRaw = await keytar.getPassword(SERVICE, `implicitPk:${name}`)
+    const implicitAttRaw = await keytar.getPassword(SERVICE, `implicitAttestation:${name}`)
+    const implicitSigRaw = await keytar.getPassword(SERVICE, `implicitIdentitySig:${name}`)
+
     if (!walletAddress) throw new Error(`Missing wallet address in Keychain: wallet:${name}`)
     if (!explicitRaw) throw new Error(`Missing explicit session in Keychain: explicitSession:${name}`)
 
     const projectAccessKey = process.env.SEQUENCE_PROJECT_ACCESS_KEY
     if (!projectAccessKey) throw new Error('Missing SEQUENCE_PROJECT_ACCESS_KEY env var')
 
-    const { jsonRevivers } = await import('@0xsequence/dapp-client')
-    const explicit = JSON.parse(explicitRaw, jsonRevivers)
+    const walletUrl = process.env.SEQUENCE_ECOSYSTEM_WALLET_URL || 'https://immutable.ecosystem-demo.xyz'
+    const dappOrigin = process.env.SEQUENCE_DAPP_ORIGIN || process.env.SEQUENCE_ECOSYSTEM_CONNECTOR_URL || ''
+    if (!dappOrigin) throw new Error('Missing SEQUENCE_DAPP_ORIGIN (should match the connector UI origin)')
 
-    if (!explicit?.pk || !explicit?.config) throw new Error('Stored explicit session is missing pk/config; re-link wallet')
+    const { DappClient, TransportMode, jsonRevivers } = await import('@0xsequence/dapp-client')
+
+    const explicitSession = JSON.parse(explicitRaw, jsonRevivers)
+    if (!explicitSession?.pk) {
+      throw new Error('Stored explicit session is missing pk; re-link wallet')
+    }
+    const deadline = explicitSession?.config?.deadline
+    if (deadline) {
+      const deadlineSec = typeof deadline === 'bigint' ? Number(deadline) : Number(deadline)
+      const nowSec = Math.floor(Date.now() / 1000)
+      if (Number.isFinite(deadlineSec) && deadlineSec <= nowSec) {
+        throw new Error(`Explicit session has expired (deadline ${deadlineSec}). Re-link wallet to mint a fresh session.`)
+      }
+    }
+
+    // Keychain-backed storage modeled after wallet-dapp-client-cli
+    class KeychainSequenceStorage {
+      constructor() {
+        this.pendingRedirect = false
+        this.tempSessionPk = null
+        this.pendingRequest = null
+        this.explicitSessions = [{
+          pk: explicitSession.pk,
+          walletAddress: explicitSession.walletAddress || walletAddress,
+          chainId: 137,
+          loginMethod: explicitSession.loginMethod,
+          userEmail: explicitSession.userEmail,
+          guard: explicitSession.guard
+        }]
+        this.implicitSession = null
+      }
+
+      async setPendingRedirectRequest(isPending) { this.pendingRedirect = !!isPending }
+      async isRedirectRequestPending() { return !!this.pendingRedirect }
+      async saveTempSessionPk(pk) { this.tempSessionPk = pk }
+      async getAndClearTempSessionPk() { const v = this.tempSessionPk; this.tempSessionPk = null; return v }
+      async savePendingRequest(context) { this.pendingRequest = context }
+      async getAndClearPendingRequest() { const v = this.pendingRequest; this.pendingRequest = null; return v }
+      async peekPendingRequest() { return this.pendingRequest }
+
+      async saveExplicitSession(sessionData) {
+        this.explicitSessions = [...this.explicitSessions.filter(s => !(s.walletAddress === sessionData.walletAddress && s.pk === sessionData.pk && s.chainId === sessionData.chainId)), sessionData]
+      }
+      async getExplicitSessions() { return [...this.explicitSessions] }
+      async clearExplicitSessions() { this.explicitSessions = [] }
+
+      async saveImplicitSession(sessionData) { this.implicitSession = sessionData }
+      async getImplicitSession() { return this.implicitSession }
+      async clearImplicitSession() { this.implicitSession = null }
+
+      async saveSessionlessConnection(sessionData) { this.sessionlessConnection = sessionData }
+      async getSessionlessConnection() { return this.sessionlessConnection ?? null }
+      async clearSessionlessConnection() { this.sessionlessConnection = null }
+
+      async saveSessionlessConnectionSnapshot(sessionData) { this.sessionlessConnectionSnapshot = sessionData }
+      async getSessionlessConnectionSnapshot() { return this.sessionlessConnectionSnapshot ?? null }
+      async clearSessionlessConnectionSnapshot() { this.sessionlessConnectionSnapshot = null }
+
+      async clearAllData() {
+        this.pendingRedirect = false
+        this.tempSessionPk = null
+        this.pendingRequest = null
+        this.explicitSessions = []
+        this.implicitSession = null
+        this.sessionlessConnection = null
+        this.sessionlessConnectionSnapshot = null
+      }
+    }
+
+    class MapSessionStorage {
+      constructor() { this.kv = new Map() }
+      async getItem(k) { return this.kv.has(k) ? this.kv.get(k) : null }
+      async setItem(k, v) { this.kv.set(k, v) }
+      async removeItem(k) { this.kv.delete(k) }
+    }
+
+    const sequenceStorage = new KeychainSequenceStorage()
+    const sequenceSessionStorage = new MapSessionStorage()
+
+    // Seed implicit session if we have it (optional, but helps dapp-client initialize correctly).
+    if (implicitPkRaw && implicitAttRaw && implicitSigRaw) {
+      const implicitAttestation = JSON.parse(implicitAttRaw, jsonRevivers)
+      const implicitIdentitySignature = JSON.parse(implicitSigRaw, jsonRevivers)
+      await sequenceStorage.saveImplicitSession({
+        pk: implicitPkRaw,
+        walletAddress: explicitSession.walletAddress || walletAddress,
+        attestation: implicitAttestation,
+        identitySignature: implicitIdentitySignature,
+        chainId: 137,
+        loginMethod: explicitSession.loginMethod,
+        userEmail: explicitSession.userEmail,
+        guard: explicitSession.guard
+      })
+    }
+
+    // @0xsequence/relayer expects window.fetch; provide a minimal shim for Node.
+    if (!globalThis.window) globalThis.window = { fetch: globalThis.fetch }
+    else if (!globalThis.window.fetch) globalThis.window.fetch = globalThis.fetch
+
+    const client = new DappClient(walletUrl, dappOrigin, projectAccessKey, {
+      transportMode: TransportMode.REDIRECT,
+      nodesUrl: 'https://nodes.sequence.app/{network}',
+      relayerUrl: 'https://dev-{network}-relayer.sequence.app',
+      sequenceStorage,
+      sequenceSessionStorage,
+      canUseIndexedDb: false
+    })
+
+    await client.initialize()
+    if (!client.isInitialized) throw new Error('Client not initialized')
 
     const parseEther = (s) => {
       const [i, fRaw = ''] = String(s).split('.')
@@ -351,98 +465,26 @@ async function main() {
 
     const value = parseEther(amount)
 
-    // Use Sequence value forwarder for native sends (we permission this target).
+    // ValueForwarder call (matches our explicit session permissions)
     const forwardTo = '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca'
     const selector = '0x15dacbea' // forwardValue(address,uint256)
     const pad = (hex, n = 64) => String(hex).replace(/^0x/, '').padStart(n, '0')
     const data = selector + pad(to) + pad('0x' + value.toString(16))
 
-    const calls = [{
-      to: forwardTo,
-      value: 0n,
-      data,
-      gasLimit: 0n,
-      delegateCall: false,
-      onlyFallback: false,
-      behaviorOnError: 'revert'
-    }]
+    const transactions = [{ to: forwardTo, value: 0n, data }]
 
     if (!broadcast) {
-      console.log(JSON.stringify({ ok: true, dryRun: true, walletName: name, walletAddress, to, amount, value: value.toString() }, null, 2))
+      const bigintReplacer = (_k, v) => (typeof v === 'bigint' ? v.toString() : v)
+      console.log(JSON.stringify({ ok: true, dryRun: true, walletName: name, walletAddress, to, amount, value: value.toString(), transactions }, bigintReplacer, 2))
       return
     }
 
-    // Headless v3 send using wallet-core + relayer.
-    const { Wallet, State, Signers, Envelope } = await import('@0xsequence/wallet-core')
-    const { Extensions, Payload } = await import('@0xsequence/wallet-primitives')
-    const { Provider, RpcTransport, Address } = await import('ox')
-    const { Relayer } = await import('@0xsequence/relayer')
+    const feeOptions = await client.getFeeOptions(137, transactions)
+    const feeOpt = (feeOptions || []).find((o) => o?.token?.contractAddress === '0x0000000000000000000000000000000000000000') || feeOptions?.[0]
 
-    const chainId = 137
+    const txHash = await client.sendTransaction(137, transactions, feeOpt)
 
-    const rpcUrl = `https://nodes.sequence.app/polygon/${projectAccessKey}`
-    const provider = Provider.from(RpcTransport.fromHttp(rpcUrl))
-
-    const stateProvider = new State.Sequence.Provider() // defaults to https://keymachine.sequence.app
-    const wallet = new Wallet(Address.from(walletAddress), { stateProvider })
-
-    // Create explicit session signer from pk + the explicit session config used during connect.
-    const explicitSigner = new Signers.Session.Explicit(explicit.pk, {
-      chainId,
-      valueLimit: BigInt(explicit.config.valueLimit),
-      deadline: BigInt(explicit.config.deadline),
-      permissions: explicit.config.permissions
-    })
-
-    const sessionManager = new Signers.SessionManager(wallet, {
-      sessionManagerAddress: Extensions.Rc5.sessions,
-      stateProvider,
-      explicitSigners: [explicitSigner],
-      provider
-    })
-
-    // Prepare and sign an envelope
-    const envelope = await wallet.prepareTransaction(provider, calls, { noConfigUpdate: true })
-    const parented = { ...envelope.payload, parentWallets: [wallet.address] }
-
-    const imageHash = await sessionManager.imageHash
-    if (!imageHash) throw new Error('Session manager image hash unavailable')
-
-    const signature = await sessionManager.signSapient(wallet.address, chainId, parented, imageHash)
-
-    const signedEnvelope = Envelope.toSigned(envelope, [{ imageHash, signature }])
-    const built = await wallet.buildTransaction(provider, signedEnvelope)
-
-    // Ask relayer for fee quote (opaque) and relay.
-    const relayerHost = 'https://dev-polygon-relayer.sequence.app'
-    const relayer = new Relayer.RpcRelayer(relayerHost, chainId, rpcUrl, globalThis.fetch, projectAccessKey)
-    const { quote } = await relayer.feeOptions(wallet.address, chainId, calls)
-    const { opHash } = await relayer.relay(wallet.address, built.data, chainId, quote)
-
-    // Wait for confirmation
-    let txHash
-    for (let i = 0; i < 80; i++) {
-      const st = await relayer.status(opHash, chainId)
-      if (st.status === 'confirmed') {
-        txHash = st.transactionHash
-        break
-      }
-      if (st.status === 'failed') {
-        throw new Error(`Relayer failed: ${st.reason || 'unknown'}`)
-      }
-      await new Promise((r) => setTimeout(r, 1500))
-    }
-    if (!txHash) throw new Error(`Timed out waiting for tx receipt (opHash=${opHash})`)
-
-    console.log(JSON.stringify({
-      ok: true,
-      walletName: name,
-      walletAddress,
-      to,
-      amount,
-      txHash,
-      explorerUrl: `${explorerBase('polygon')}${txHash}`
-    }, null, 2))
+    console.log(JSON.stringify({ ok: true, walletName: name, walletAddress, to, amount, txHash, explorerUrl: `${explorerBase('polygon')}${txHash}` }, null, 2))
     return
   }
 
