@@ -9,6 +9,65 @@ import sealedbox from 'tweetnacl-sealedbox-js'
 
 const SERVICE = 'openclaw.sequence-ecosystem'
 
+function installFetchLogger() {
+  const enabled = ['1', 'true', 'yes'].includes(String(process.env.SEQ_ECO_DEBUG_FETCH || '').toLowerCase())
+  if (!enabled) return
+
+  const logPath =
+    process.env.SEQ_ECO_FETCH_LOG_PATH ||
+    path.join(os.homedir(), '.openclaw', 'workspace', 'tmp', 'seq-eco-fetch.log')
+
+  fs.mkdirSync(path.dirname(logPath), { recursive: true })
+
+  const origFetch = globalThis.fetch
+  if (typeof origFetch !== 'function') {
+    throw new Error('globalThis.fetch is not available; cannot install fetch logger')
+  }
+
+  const redact = (s) =>
+    String(s)
+      // avoid leaking huge payloads into logs
+      .slice(0, 4000)
+
+  const log = (line) => {
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${line}\n`, 'utf8')
+  }
+
+  globalThis.fetch = async (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input?.url
+    const method = init?.method || 'GET'
+    const bodyPreview = init?.body ? redact(init.body) : ''
+
+    log(`→ ${method} ${url}`)
+    if (bodyPreview) log(`  req.body=${bodyPreview}`)
+
+    try {
+      const res = await origFetch(input, init)
+
+      // clone so downstream can still read the body
+      let resText = ''
+      try {
+        resText = redact(await res.clone().text())
+      } catch (e) {
+        resText = `[unreadable body: ${e instanceof Error ? e.message : String(e)}]`
+      }
+
+      log(`← ${res.status} ${method} ${url}`)
+      if (resText) log(`  res.body=${resText}`)
+
+      return res
+    } catch (e) {
+      log(`✖ fetch threw: ${method} ${url} :: ${e instanceof Error ? e.stack || e.message : String(e)}`)
+      throw e
+    }
+  }
+
+  // If we already provided window.fetch shim, keep it wired to the wrapped fetch.
+  if (globalThis.window) globalThis.window.fetch = globalThis.fetch
+
+  log(`fetch logger enabled (SEQ_ECO_DEBUG_FETCH); logPath=${logPath}`)
+}
+
 function usage() {
   console.log(`Usage:
   seq-eco.mjs create-request --name <walletName> [--chain polygon]
@@ -445,6 +504,8 @@ async function main() {
     if (!globalThis.window) globalThis.window = { fetch: globalThis.fetch }
     else if (!globalThis.window.fetch) globalThis.window.fetch = globalThis.fetch
 
+    installFetchLogger()
+
     const keymachineUrl = process.env.SEQUENCE_KEYMACHINE_URL || 'https://keymachine.sequence.app'
     const nodesUrl = process.env.SEQUENCE_NODES_URL || defaultNodesUrl(projectAccessKey)
     const relayerUrl = process.env.SEQUENCE_RELAYER_URL || 'https://{network}-relayer.sequence.app'
@@ -610,6 +671,8 @@ async function main() {
     // @0xsequence/relayer expects window.fetch; provide a minimal shim for Node.
     if (!globalThis.window) globalThis.window = { fetch: globalThis.fetch }
     else if (!globalThis.window.fetch) globalThis.window.fetch = globalThis.fetch
+
+    installFetchLogger()
 
     const keymachineUrl = process.env.SEQUENCE_KEYMACHINE_URL || 'https://keymachine.sequence.app'
     const nodesUrl = process.env.SEQUENCE_NODES_URL || defaultNodesUrl(projectAccessKey)
