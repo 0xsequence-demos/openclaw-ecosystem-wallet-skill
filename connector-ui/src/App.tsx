@@ -165,6 +165,12 @@ function App() {
       const paymentAddress = (feeTokens as any)?.paymentAddress
       const tokens = (feeTokens as any)?.tokens || []
 
+      // If the relayer requires a fee, allow the wallet to pay the relayer paymentAddress directly in native POL.
+      // Without this, dapp-client may try to route fee payment through ValueForwarder using a different selector,
+      // which can revert during relayer simulation.
+      const nativeFeePermission: any[] =
+        (feeTokens as any)?.isFeeRequired && paymentAddress ? [{ target: paymentAddress, rules: [] }] : []
+
       const feePermissions: any[] =
         (feeTokens as any)?.isFeeRequired && paymentAddress && Array.isArray(tokens)
           ? tokens.map((token: any) => {
@@ -185,7 +191,7 @@ function App() {
         // Demo default: allow up to 2 POL of native spend (can be tuned)
         valueLimit: 2000000000000000000n,
         deadline: BigInt(Math.floor(Date.now() / 1000) + 60 * 60 * 24),
-        permissions: [...basePermissions, ...feePermissions]
+        permissions: [...basePermissions, ...nativeFeePermission, ...feePermissions]
       }
 
       // Connect will open the wallet UI (popup).
