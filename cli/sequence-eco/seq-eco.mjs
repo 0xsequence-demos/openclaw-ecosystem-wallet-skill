@@ -181,7 +181,8 @@ async function main() {
     const priv = b64urlEncode(kp.secretKey)
 
     const createdAt = new Date().toISOString()
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
+    // Give plenty of time to complete the connect flow + copy/paste on mobile.
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
 
     const statePath = writePrivateRequest(rid, {
       rid,
@@ -465,13 +466,8 @@ async function main() {
 
     const value = parseEther(amount)
 
-    // ValueForwarder call (matches our explicit session permissions)
-    const forwardTo = '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca'
-    const selector = '0x15dacbea' // forwardValue(address,uint256)
-    const pad = (hex, n = 64) => String(hex).replace(/^0x/, '').padStart(n, '0')
-    const data = selector + pad(to) + pad('0x' + value.toString(16))
-
-    const transactions = [{ to: forwardTo, value: 0n, data }]
+    // Direct native transfer (avoid ValueForwarder; dapp-client signer selection rejects that call in headless mode)
+    const transactions = [{ to, value, data: '0x' }]
 
     if (!broadcast) {
       const bigintReplacer = (_k, v) => (typeof v === 'bigint' ? v.toString() : v)
