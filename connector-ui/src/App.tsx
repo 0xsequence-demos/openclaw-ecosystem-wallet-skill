@@ -160,7 +160,7 @@ function App() {
       // Base explicit session permissions (function-scoped, like wallet-dapp-client-cli):
       // allow forwardValue(to, value) on the ValueForwarder up to our session valueLimit.
       const forwardValuePermission = Utils.PermissionBuilder.for(VALUE_FORWARDER)
-        .forFunction('function forwardValue(address to, uint256 value)')
+        .forFunction('function forwardValue(address,uint256)')
         // Keep the native spend limit enforced via the session valueLimit; avoid
         // additional param rules here because signer-selection is strict about rule shapes.
         .build()
