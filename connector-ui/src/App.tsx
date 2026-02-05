@@ -157,17 +157,10 @@ function App() {
     try {
       const VALUE_FORWARDER = '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca'
 
-      // Base explicit session permissions (function-scoped, like wallet-dapp-client-cli):
-      // allow forwardValue(to, value) on the ValueForwarder up to our session valueLimit.
-      const forwardValuePermission = Utils.PermissionBuilder.for(VALUE_FORWARDER)
-        .forFunction('function forwardValue(address,uint256)')
-        // Keep the native spend limit enforced via the session valueLimit; avoid
-        // additional param rules here because signer-selection is strict about rule shapes.
-        .build()
-
-      // Also include fee-token payment permissions (ERC20 transfer -> paymentAddress) so the
-      // relayer can always pick a fee option without prompting the wallet.
-      const basePermissions: any[] = [forwardValuePermission]
+      // Base explicit session permission: allow calling the Sequence ValueForwarder.
+      // NOTE: This mirrors wallet-dapp-client-cli (it uses { target: VALUE_FORWARDER, rules: [] }).
+      // We tried function-scoped permissions, but dapp-client signer selection rejected calls.
+      const basePermissions: any[] = [{ target: VALUE_FORWARDER, rules: [] }]
 
       const paymentAddress = (feeTokens as any)?.paymentAddress
       const tokens = (feeTokens as any)?.tokens || []
