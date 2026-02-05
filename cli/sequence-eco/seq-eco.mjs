@@ -55,10 +55,10 @@ function randomId(bytes = 16) {
   return b64urlEncode(nacl.randomBytes(bytes))
 }
 
-function defaultNodesUrl(projectAccessKey) {
-  // Immutable ecosystem uses: https://nodes.sequence.app/<network>/<projectAccessKey>
-  // Do NOT embed the key twice; dapp-client/viem may append it internally.
-  return `https://nodes.sequence.app/{network}/${projectAccessKey}`
+function defaultNodesUrl(_projectAccessKey) {
+  // Pass the base node gateway URL; dapp-client/viem will append `/{network}/{projectAccessKey}`.
+  // If we embed the key here, it can get appended twice.
+  return 'https://nodes.sequence.app/{network}'
 }
 
 function ensureDir(p) {
