@@ -253,11 +253,18 @@ async function main() {
     if (!explicitSession.pk || typeof explicitSession.pk !== 'string') throw new Error('Missing explicitSession.pk in payload')
     if (!implicit?.pk || !implicit?.attestation || !implicit?.identitySignature) throw new Error('Missing implicit session in payload')
 
+    const implicitMeta = {
+      guard: implicit.guard,
+      loginMethod: implicit.loginMethod,
+      userEmail: implicit.userEmail,
+    }
+
     // Store full explicit session JSON (BigInt-safe) and also keep pk for convenience.
     const { jsonReplacers } = await import('@0xsequence/dapp-client')
     await keytar.setPassword(SERVICE, `explicitSession:${name}`, JSON.stringify(explicitSession, jsonReplacers))
     await keytar.setPassword(SERVICE, `sessionPk:${name}`, explicitSession.pk)
     await keytar.setPassword(SERVICE, `implicitPk:${name}`, implicit.pk)
+    await keytar.setPassword(SERVICE, `implicitMeta:${name}`, JSON.stringify(implicitMeta, jsonReplacers))
 
     await keytar.setPassword(SERVICE, `implicitAttestation:${name}`, JSON.stringify(implicit.attestation, jsonReplacers))
     await keytar.setPassword(SERVICE, `implicitIdentitySig:${name}`, JSON.stringify(implicit.identitySignature, jsonReplacers))
@@ -334,6 +341,7 @@ async function main() {
     const implicitPkRaw = await keytar.getPassword(SERVICE, `implicitPk:${name}`)
     const implicitAttRaw = await keytar.getPassword(SERVICE, `implicitAttestation:${name}`)
     const implicitSigRaw = await keytar.getPassword(SERVICE, `implicitIdentitySig:${name}`)
+    const implicitMetaRaw = await keytar.getPassword(SERVICE, `implicitMeta:${name}`)
 
     if (!walletAddress) throw new Error(`Missing wallet address in Keychain: wallet:${name}`)
     if (!explicitRaw) throw new Error(`Missing explicit session in Keychain: explicitSession:${name}`)
@@ -413,15 +421,16 @@ async function main() {
     if (implicitPkRaw && implicitAttRaw && implicitSigRaw) {
       const implicitAttestation = JSON.parse(implicitAttRaw, jsonRevivers)
       const implicitIdentitySignature = JSON.parse(implicitSigRaw, jsonRevivers)
+      const meta = implicitMetaRaw ? JSON.parse(implicitMetaRaw, jsonRevivers) : {}
       await sequenceStorage.saveImplicitSession({
         pk: implicitPkRaw,
         walletAddress: explicitSession.walletAddress || walletAddress,
         attestation: implicitAttestation,
         identitySignature: implicitIdentitySignature,
         chainId: 137,
-        loginMethod: explicitSession.loginMethod,
-        userEmail: explicitSession.userEmail,
-        guard: explicitSession.guard
+        loginMethod: meta.loginMethod,
+        userEmail: meta.userEmail,
+        guard: meta.guard
       })
     }
 
@@ -431,7 +440,7 @@ async function main() {
     const client = new DappClient(walletUrl, dappOrigin, projectAccessKey, {
       transportMode: TransportMode.REDIRECT,
       nodesUrl: 'https://nodes.sequence.app/{network}',
-      relayerUrl: 'https://dev-{network}-relayer.sequence.app',
+      relayerUrl: 'https://{network}-relayer.sequence.app',
       sequenceStorage,
       sequenceSessionStorage,
       canUseIndexedDb: false
@@ -477,6 +486,7 @@ async function main() {
     const implicitPkRaw = await keytar.getPassword(SERVICE, `implicitPk:${name}`)
     const implicitAttRaw = await keytar.getPassword(SERVICE, `implicitAttestation:${name}`)
     const implicitSigRaw = await keytar.getPassword(SERVICE, `implicitIdentitySig:${name}`)
+    const implicitMetaRaw = await keytar.getPassword(SERVICE, `implicitMeta:${name}`)
 
     if (!walletAddress) throw new Error(`Missing wallet address in Keychain: wallet:${name}`)
     if (!explicitRaw) throw new Error(`Missing explicit session in Keychain: explicitSession:${name}`)
@@ -571,15 +581,16 @@ async function main() {
     if (implicitPkRaw && implicitAttRaw && implicitSigRaw) {
       const implicitAttestation = JSON.parse(implicitAttRaw, jsonRevivers)
       const implicitIdentitySignature = JSON.parse(implicitSigRaw, jsonRevivers)
+      const meta = implicitMetaRaw ? JSON.parse(implicitMetaRaw, jsonRevivers) : {}
       await sequenceStorage.saveImplicitSession({
         pk: implicitPkRaw,
         walletAddress: explicitSession.walletAddress || walletAddress,
         attestation: implicitAttestation,
         identitySignature: implicitIdentitySignature,
         chainId: 137,
-        loginMethod: explicitSession.loginMethod,
-        userEmail: explicitSession.userEmail,
-        guard: explicitSession.guard
+        loginMethod: meta.loginMethod,
+        userEmail: meta.userEmail,
+        guard: meta.guard
       })
     }
 
@@ -590,7 +601,7 @@ async function main() {
     const client = new DappClient(walletUrl, dappOrigin, projectAccessKey, {
       transportMode: TransportMode.REDIRECT,
       nodesUrl: 'https://nodes.sequence.app/{network}',
-      relayerUrl: 'https://dev-{network}-relayer.sequence.app',
+      relayerUrl: 'https://{network}-relayer.sequence.app',
       sequenceStorage,
       sequenceSessionStorage,
       canUseIndexedDb: false

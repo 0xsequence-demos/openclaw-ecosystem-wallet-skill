@@ -256,7 +256,11 @@ function App() {
           pk: implicit.pk,
           attestation: implicit.attestation,
           identitySignature,
-          chainId: implicit.chainId
+          chainId: implicit.chainId,
+          // Immutable uses guard/keymachine; preserve metadata so headless can initialize correctly.
+          guard: (implicit as any).guard,
+          loginMethod: (implicit as any).loginMethod,
+          userEmail: (implicit as any).userEmail
         }
       }
 
