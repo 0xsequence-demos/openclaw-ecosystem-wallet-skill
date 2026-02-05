@@ -56,8 +56,8 @@ function randomId(bytes = 16) {
 }
 
 function defaultNodesUrl(projectAccessKey) {
-  // Sequence node gateway expects the project access key as the final path segment.
-  // Using the bare gateway can yield URLs ending with `/undefined` inside the provider.
+  // Immutable ecosystem uses: https://nodes.sequence.app/<network>/<projectAccessKey>
+  // Do NOT embed the key twice; dapp-client/viem may append it internally.
   return `https://nodes.sequence.app/{network}/${projectAccessKey}`
 }
 
@@ -443,7 +443,7 @@ async function main() {
     if (!globalThis.window) globalThis.window = { fetch: globalThis.fetch }
     else if (!globalThis.window.fetch) globalThis.window.fetch = globalThis.fetch
 
-    const keymachineUrl = process.env.SEQUENCE_KEYMACHINE_URL
+    const keymachineUrl = process.env.SEQUENCE_KEYMACHINE_URL || 'https://keymachine.sequence.app'
     const nodesUrl = process.env.SEQUENCE_NODES_URL || defaultNodesUrl(projectAccessKey)
     const relayerUrl = process.env.SEQUENCE_RELAYER_URL || 'https://{network}-relayer.sequence.app'
 
@@ -609,7 +609,7 @@ async function main() {
     if (!globalThis.window) globalThis.window = { fetch: globalThis.fetch }
     else if (!globalThis.window.fetch) globalThis.window.fetch = globalThis.fetch
 
-    const keymachineUrl = process.env.SEQUENCE_KEYMACHINE_URL
+    const keymachineUrl = process.env.SEQUENCE_KEYMACHINE_URL || 'https://keymachine.sequence.app'
     const nodesUrl = process.env.SEQUENCE_NODES_URL || defaultNodesUrl(projectAccessKey)
     const relayerUrl = process.env.SEQUENCE_RELAYER_URL || 'https://{network}-relayer.sequence.app'
 

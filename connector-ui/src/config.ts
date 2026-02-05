@@ -7,6 +7,9 @@ export const dappOrigin = (import.meta.env.VITE_DAPP_ORIGIN as string | undefine
 
 export const projectAccessKey = import.meta.env.VITE_PROJECT_ACCESS_KEY as string
 export const relayerUrl = (import.meta.env.VITE_RELAYER_URL as string | undefined) || undefined
-export const nodesUrl = (import.meta.env.VITE_NODES_URL as string | undefined) || undefined
+
+// Immutable ecosystem uses prod infra.
+export const nodesUrl =
+  (import.meta.env.VITE_NODES_URL as string | undefined) || `https://nodes.sequence.app/{network}/${projectAccessKey}`
 
 export const polygonChainId = 137
