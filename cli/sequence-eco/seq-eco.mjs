@@ -339,6 +339,8 @@ async function main() {
     return
   }
 
+  const DEFAULT_WALLET_URL = 'https://acme-wallet.ecosystem-demo.xyz'
+
   if (cmd === 'config-update') {
     const broadcast = args.includes('--broadcast')
 
@@ -355,7 +357,7 @@ async function main() {
     const projectAccessKey = process.env.SEQUENCE_PROJECT_ACCESS_KEY
     if (!projectAccessKey) throw new Error('Missing SEQUENCE_PROJECT_ACCESS_KEY env var')
 
-    const walletUrl = process.env.SEQUENCE_ECOSYSTEM_WALLET_URL || 'https://immutable.ecosystem-demo.xyz'
+    const walletUrl = process.env.SEQUENCE_ECOSYSTEM_WALLET_URL || DEFAULT_WALLET_URL
     const dappOrigin = process.env.SEQUENCE_DAPP_ORIGIN || process.env.SEQUENCE_ECOSYSTEM_CONNECTOR_URL || ''
     if (!dappOrigin) throw new Error('Missing SEQUENCE_DAPP_ORIGIN (should match the connector UI origin)')
 
@@ -505,7 +507,7 @@ async function main() {
     const projectAccessKey = process.env.SEQUENCE_PROJECT_ACCESS_KEY
     if (!projectAccessKey) throw new Error('Missing SEQUENCE_PROJECT_ACCESS_KEY env var')
 
-    const walletUrl = process.env.SEQUENCE_ECOSYSTEM_WALLET_URL || 'https://immutable.ecosystem-demo.xyz'
+    const walletUrl = process.env.SEQUENCE_ECOSYSTEM_WALLET_URL || DEFAULT_WALLET_URL
     const dappOrigin = process.env.SEQUENCE_DAPP_ORIGIN || process.env.SEQUENCE_ECOSYSTEM_CONNECTOR_URL || ''
     if (!dappOrigin) throw new Error('Missing SEQUENCE_DAPP_ORIGIN (should match the connector UI origin)')
 
