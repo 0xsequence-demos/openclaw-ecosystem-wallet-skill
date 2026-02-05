@@ -146,7 +146,7 @@ function App() {
   }, [dappClient])
 
   const connect = async () => {
-    // feeTokens are prefetched to keep UX snappy; currently we don't use them for permissions.
+    // feeTokens are prefetched to keep UX snappy.
     void feeTokens
     setError('')
     setCiphertext('')
@@ -194,10 +194,29 @@ function App() {
 
       // const paymentAddress = (feeTokens as any)?.paymentAddress
 
-      // Do NOT add any fee-related permissions. Fee payment is handled by the relayer option (feeOpt)
-      // and does not require blanket approvals to the relayer paymentAddress.
+      // Fee-option permissions (pre-approvals) so the session can pay fees with ERC20s if needed.
+      // IMPORTANT: We do NOT add a blanket permission for paymentAddress itself.
+      // Instead, we scope permissions to ERC20.transfer(to=paymentAddress, value<=limit) per fee token.
       const nativeFeePermission: any[] = []
-      const feePermissions: any[] = []
+
+      const feePermissions: any[] =
+        (feeTokens as any)?.isFeeRequired && (feeTokens as any)?.paymentAddress && Array.isArray((feeTokens as any)?.tokens)
+          ? ((feeTokens as any).tokens as any[])
+              .filter((t) => !!t?.contractAddress)
+              .map((token: any) => {
+                const decimals = typeof token.decimals === 'number' ? token.decimals : 6
+                const valueLimit =
+                  decimals === 18
+                    ? 100000000000000000n // 0.1 * 1e18
+                    : 50n * 10n ** BigInt(decimals)
+
+                return Utils.PermissionBuilder.for(token.contractAddress as any)
+                  .forFunction('function transfer(address to, uint256 value)')
+                  .withUintNParam('value', valueLimit, 256, Permission.ParameterOperation.LESS_THAN_OR_EQUAL, true)
+                  .withAddressParam('to', (feeTokens as any).paymentAddress as any, Permission.ParameterOperation.EQUAL, false)
+                  .build()
+              })
+          : []
 
       const sessionConfig = {
         chainId: polygonChainId,
