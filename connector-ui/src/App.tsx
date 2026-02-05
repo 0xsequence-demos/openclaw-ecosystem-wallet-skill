@@ -161,13 +161,8 @@ function App() {
       // allow forwardValue(to, value) on the ValueForwarder up to our session valueLimit.
       const forwardValuePermission = Utils.PermissionBuilder.for(VALUE_FORWARDER)
         .forFunction('function forwardValue(address to, uint256 value)')
-        .withUintNParam(
-          'value',
-          2000000000000000000n,
-          256,
-          Permission.ParameterOperation.LESS_THAN_OR_EQUAL,
-          true,
-        )
+        // Keep the native spend limit enforced via the session valueLimit; avoid
+        // additional param rules here because signer-selection is strict about rule shapes.
         .build()
 
       // Also include fee-token payment permissions (ERC20 transfer -> paymentAddress) so the
