@@ -146,6 +146,8 @@ function App() {
   }, [dappClient])
 
   const connect = async () => {
+    // feeTokens are prefetched to keep UX snappy; currently we don't use them for permissions.
+    void feeTokens
     setError('')
     setCiphertext('')
 
@@ -190,14 +192,11 @@ function App() {
             })()
           : []
 
-      const paymentAddress = (feeTokens as any)?.paymentAddress
+      // const paymentAddress = (feeTokens as any)?.paymentAddress
 
-      // If the relayer requires a fee, allow the wallet to pay the relayer paymentAddress directly in native POL.
-      // We intentionally do NOT add broad ERC20 transfer permissions for all fee tokens, since that creates
-      // arbitrary approvals in the wallet UI.
-      const nativeFeePermission: any[] =
-        (feeTokens as any)?.isFeeRequired && paymentAddress ? [{ target: paymentAddress, rules: [] }] : []
-
+      // Do NOT add any fee-related permissions. Fee payment is handled by the relayer option (feeOpt)
+      // and does not require blanket approvals to the relayer paymentAddress.
+      const nativeFeePermission: any[] = []
       const feePermissions: any[] = []
 
       const sessionConfig = {
