@@ -156,11 +156,39 @@ function App() {
 
     try {
       const VALUE_FORWARDER = '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca'
+      const USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
 
       // Base explicit session permission: allow calling the Sequence ValueForwarder.
       // NOTE: This mirrors wallet-dapp-client-cli (it uses { target: VALUE_FORWARDER, rules: [] }).
       // We tried function-scoped permissions, but dapp-client signer selection rejected calls.
       const basePermissions: any[] = [{ target: VALUE_FORWARDER, rules: [] }]
+
+      // Optional: one-off ERC20 permission scoped by link params.
+      const params = new URLSearchParams(window.location.search)
+      const erc20 = params.get('erc20')
+      const erc20To = params.get('erc20To')
+      const erc20Amount = params.get('erc20Amount')
+
+      const erc20Permissions: any[] =
+        erc20 && erc20To && erc20Amount
+          ? (() => {
+              const tokenAddr = erc20.toLowerCase() === 'usdc' ? USDC : erc20
+              const decimals = erc20.toLowerCase() === 'usdc' ? 6 : 18
+
+              // value<=limit
+              const [i, fRaw = ''] = String(erc20Amount).split('.')
+              const f = (fRaw + '0'.repeat(decimals)).slice(0, decimals)
+              const valueLimit = BigInt(i || '0') * 10n ** BigInt(decimals) + BigInt(f || '0')
+
+              return [
+                Utils.PermissionBuilder.for(tokenAddr as any)
+                  .forFunction('function transfer(address to, uint256 value)')
+                  .withUintNParam('value', valueLimit, 256, Permission.ParameterOperation.LESS_THAN_OR_EQUAL, true)
+                  .withAddressParam('to', erc20To as any, Permission.ParameterOperation.EQUAL, false)
+                  .build()
+              ]
+            })()
+          : []
 
       const paymentAddress = (feeTokens as any)?.paymentAddress
       const tokens = (feeTokens as any)?.tokens || []
@@ -191,7 +219,7 @@ function App() {
         // Demo default: allow up to 2 POL of native spend (can be tuned)
         valueLimit: 2000000000000000000n,
         deadline: BigInt(Math.floor(Date.now() / 1000) + 60 * 60 * 24),
-        permissions: [...basePermissions, ...nativeFeePermission, ...feePermissions]
+        permissions: [...basePermissions, ...erc20Permissions, ...nativeFeePermission, ...feePermissions]
       }
 
       // Connect will open the wallet UI (popup).

@@ -70,7 +70,7 @@ function installFetchLogger() {
 
 function usage() {
   console.log(`Usage:
-  seq-eco.mjs create-request --name <walletName> [--chain polygon]
+  seq-eco.mjs create-request --name <walletName> [--chain polygon] [--usdc-to <address> --usdc-amount <amount>]
   seq-eco.mjs ingest-session --name <walletName> --rid <rid> --ciphertext '<b64url>'
 
   seq-eco.mjs wallets
@@ -79,6 +79,7 @@ function usage() {
   seq-eco.mjs address --name <walletName>
   seq-eco.mjs balances --name <walletName> [--chain polygon]
   seq-eco.mjs send-pol --name <walletName> --to <address> --amount <pol> [--broadcast]
+  seq-eco.mjs send-usdc --name <walletName> --to <address> --amount <usdc> [--broadcast]
   seq-eco.mjs config-update --name <walletName> [--broadcast]
 
 Env:
@@ -266,6 +267,15 @@ async function main() {
     url.searchParams.set('wallet', name)
     url.searchParams.set('pub', pub)
     url.searchParams.set('chain', chain)
+
+    const usdcTo = getArg(args, '--usdc-to')
+    const usdcAmount = getArg(args, '--usdc-amount')
+    if (usdcTo || usdcAmount) {
+      if (!usdcTo || !usdcAmount) throw new Error('create-request: must provide both --usdc-to and --usdc-amount')
+      url.searchParams.set('erc20', 'usdc')
+      url.searchParams.set('erc20To', usdcTo)
+      url.searchParams.set('erc20Amount', usdcAmount)
+    }
 
     console.log(JSON.stringify({ ok: true, walletName: name, chain, rid, url: url.toString(), expiresAt, storedState: statePath }, null, 2))
     return
@@ -548,6 +558,190 @@ async function main() {
     const txHash = await client.sendTransaction(137, transactions, feeOpt)
 
     console.log(JSON.stringify({ ok: true, walletName: name, walletAddress, kind: 'config-update', txHash, explorerUrl: `${explorerBase('polygon')}${txHash}` }, null, 2))
+    return
+  }
+
+  const runDappClientTx = async ({
+    name,
+    walletName,
+    chainId,
+    walletUrl,
+    projectAccessKey,
+    dappOrigin,
+    transactions,
+    broadcast,
+    preferNativeFee
+  }) => {
+    const walletAddress = await keytar.getPassword(SERVICE, `wallet:${walletName}`)
+    const explicitRaw = await keytar.getPassword(SERVICE, `explicitSession:${walletName}`)
+    const implicitPkRaw = await keytar.getPassword(SERVICE, `implicitPk:${walletName}`)
+    const implicitAttRaw = await keytar.getPassword(SERVICE, `implicitAttestation:${walletName}`)
+    const implicitSigRaw = await keytar.getPassword(SERVICE, `implicitIdentitySig:${walletName}`)
+    const implicitMetaRaw = await keytar.getPassword(SERVICE, `implicitMeta:${walletName}`)
+
+    if (!walletAddress) throw new Error(`Missing wallet address in Keychain: wallet:${walletName}`)
+    if (!explicitRaw) throw new Error(`Missing explicit session in Keychain: explicitSession:${walletName}`)
+
+    const { DappClient, TransportMode, jsonRevivers } = await import('@0xsequence/dapp-client')
+
+    const explicitSession = JSON.parse(explicitRaw, jsonRevivers)
+    if (!explicitSession?.pk) throw new Error('Stored explicit session is missing pk; re-link wallet')
+
+    // Keychain-backed storage modeled after wallet-dapp-client-cli
+    class KeychainSequenceStorage {
+      constructor() {
+        this.pendingRedirect = false
+        this.tempSessionPk = null
+        this.pendingRequest = null
+        this.explicitSessions = [{
+          pk: explicitSession.pk,
+          walletAddress: explicitSession.walletAddress || walletAddress,
+          chainId,
+          loginMethod: explicitSession.loginMethod,
+          userEmail: explicitSession.userEmail,
+          guard: explicitSession.guard
+        }]
+        this.implicitSession = null
+      }
+      async setPendingRedirectRequest(isPending) { this.pendingRedirect = !!isPending }
+      async isRedirectRequestPending() { return !!this.pendingRedirect }
+      async saveTempSessionPk(pk) { this.tempSessionPk = pk }
+      async getAndClearTempSessionPk() { const v = this.tempSessionPk; this.tempSessionPk = null; return v }
+      async savePendingRequest(context) { this.pendingRequest = context }
+      async getAndClearPendingRequest() { const v = this.pendingRequest; this.pendingRequest = null; return v }
+      async peekPendingRequest() { return this.pendingRequest }
+      async saveExplicitSession(sessionData) {
+        this.explicitSessions = [...this.explicitSessions.filter(s => !(s.walletAddress === sessionData.walletAddress && s.pk === sessionData.pk && s.chainId === sessionData.chainId)), sessionData]
+      }
+      async getExplicitSessions() { return [...this.explicitSessions] }
+      async clearExplicitSessions() { this.explicitSessions = [] }
+      async saveImplicitSession(sessionData) { this.implicitSession = sessionData }
+      async getImplicitSession() { return this.implicitSession }
+      async clearImplicitSession() { this.implicitSession = null }
+      async saveSessionlessConnection(sessionData) { this.sessionlessConnection = sessionData }
+      async getSessionlessConnection() { return this.sessionlessConnection ?? null }
+      async clearSessionlessConnection() { this.sessionlessConnection = null }
+      async saveSessionlessConnectionSnapshot(sessionData) { this.sessionlessConnectionSnapshot = sessionData }
+      async getSessionlessConnectionSnapshot() { return this.sessionlessConnectionSnapshot ?? null }
+      async clearSessionlessConnectionSnapshot() { this.sessionlessConnectionSnapshot = null }
+      async clearAllData() {}
+    }
+    class MapSessionStorage {
+      constructor() { this.kv = new Map() }
+      async getItem(k) { return this.kv.has(k) ? this.kv.get(k) : null }
+      async setItem(k, v) { this.kv.set(k, v) }
+      async removeItem(k) { this.kv.delete(k) }
+    }
+
+    const sequenceStorage = new KeychainSequenceStorage()
+    const sequenceSessionStorage = new MapSessionStorage()
+
+    if (implicitPkRaw && implicitAttRaw && implicitSigRaw) {
+      const implicitAttestation = JSON.parse(implicitAttRaw, jsonRevivers)
+      const implicitIdentitySignature = JSON.parse(implicitSigRaw, jsonRevivers)
+      const meta = implicitMetaRaw ? JSON.parse(implicitMetaRaw, jsonRevivers) : {}
+      await sequenceStorage.saveImplicitSession({
+        pk: implicitPkRaw,
+        walletAddress: explicitSession.walletAddress || walletAddress,
+        attestation: implicitAttestation,
+        identitySignature: implicitIdentitySignature,
+        chainId,
+        loginMethod: meta.loginMethod,
+        userEmail: meta.userEmail,
+        guard: meta.guard
+      })
+    }
+
+    if (!globalThis.window) globalThis.window = { fetch: globalThis.fetch }
+    else if (!globalThis.window.fetch) globalThis.window.fetch = globalThis.fetch
+
+    installFetchLogger()
+
+    const keymachineUrl = process.env.SEQUENCE_KEYMACHINE_URL || 'https://keymachine.sequence.app'
+    const nodesUrl = process.env.SEQUENCE_NODES_URL || defaultNodesUrl(projectAccessKey)
+    const relayerUrl = process.env.SEQUENCE_RELAYER_URL || 'https://{network}-relayer.sequence.app'
+
+    const client = new DappClient(walletUrl, dappOrigin, projectAccessKey, {
+      transportMode: TransportMode.REDIRECT,
+      keymachineUrl,
+      nodesUrl,
+      relayerUrl,
+      sequenceStorage,
+      sequenceSessionStorage,
+      canUseIndexedDb: false
+    })
+
+    await client.initialize()
+    if (!client.isInitialized) throw new Error('Client not initialized')
+
+    if (!broadcast) {
+      const bigintReplacer = (_k, v) => (typeof v === 'bigint' ? v.toString() : v)
+      console.log(JSON.stringify({ ok: true, dryRun: true, walletName, walletAddress, transactions }, bigintReplacer, 2))
+      return { walletAddress, dryRun: true }
+    }
+
+    const feeOptions = await client.getFeeOptions(chainId, transactions)
+    const feeOpt = preferNativeFee
+      ? (feeOptions || []).find((o) => !o?.token?.contractAddress) || feeOptions?.[0]
+      : feeOptions?.[0]
+
+    const txHash = await client.sendTransaction(chainId, transactions, feeOpt)
+    return { walletAddress, txHash }
+  }
+
+  if (cmd === 'send-usdc') {
+    const to = getArg(args, '--to')
+    const amount = getArg(args, '--amount')
+    const broadcast = args.includes('--broadcast')
+    if (!to || !amount) throw new Error('Missing --to and/or --amount')
+
+    const projectAccessKey = process.env.SEQUENCE_PROJECT_ACCESS_KEY
+    if (!projectAccessKey) throw new Error('Missing SEQUENCE_PROJECT_ACCESS_KEY env var')
+
+    const walletUrl = process.env.SEQUENCE_ECOSYSTEM_WALLET_URL || DEFAULT_WALLET_URL
+    const dappOrigin = process.env.SEQUENCE_DAPP_ORIGIN || process.env.SEQUENCE_ECOSYSTEM_CONNECTOR_URL || ''
+    if (!dappOrigin) throw new Error('Missing SEQUENCE_DAPP_ORIGIN (should match the connector UI origin)')
+
+    // Polygon USDC (native): 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359
+    const USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
+    const decimals = 6n
+
+    const parseUnits = (s, d) => {
+      const [i, fRaw = ''] = String(s).split('.')
+      const f = (fRaw + '0'.repeat(Number(d))).slice(0, Number(d))
+      return BigInt(i) * 10n ** d + BigInt(f)
+    }
+
+    const value = parseUnits(amount, decimals)
+
+    // transfer(address to, uint256 value)
+    const selector = '0xa9059cbb'
+    const pad = (hex, n = 64) => String(hex).replace(/^0x/, '').padStart(n, '0')
+    const data = selector + pad(to) + pad('0x' + value.toString(16))
+
+    const transactions = [{ to: USDC, value: 0n, data }]
+
+    const { walletAddress, txHash, dryRun } = await runDappClientTx({
+      name,
+      walletName: name,
+      chainId: 137,
+      walletUrl,
+      projectAccessKey,
+      dappOrigin,
+      transactions,
+      broadcast,
+      preferNativeFee: true
+    })
+
+    if (dryRun) return
+
+    console.log(
+      JSON.stringify(
+        { ok: true, walletName: name, walletAddress, token: 'USDC', tokenAddress: USDC, to, amount, txHash, explorerUrl: `${explorerBase('polygon')}${txHash}` },
+        null,
+        2
+      )
+    )
     return
   }
 
