@@ -191,28 +191,14 @@ function App() {
           : []
 
       const paymentAddress = (feeTokens as any)?.paymentAddress
-      const tokens = (feeTokens as any)?.tokens || []
 
       // If the relayer requires a fee, allow the wallet to pay the relayer paymentAddress directly in native POL.
-      // Without this, dapp-client may try to route fee payment through ValueForwarder using a different selector,
-      // which can revert during relayer simulation.
+      // We intentionally do NOT add broad ERC20 transfer permissions for all fee tokens, since that creates
+      // arbitrary approvals in the wallet UI.
       const nativeFeePermission: any[] =
         (feeTokens as any)?.isFeeRequired && paymentAddress ? [{ target: paymentAddress, rules: [] }] : []
 
-      const feePermissions: any[] =
-        (feeTokens as any)?.isFeeRequired && paymentAddress && Array.isArray(tokens)
-          ? tokens.map((token: any) => {
-              const decimals = typeof token.decimals === 'number' ? token.decimals : 6
-              const valueLimit = decimals === 18 ? 100000000000000000n : 50n * 10n ** BigInt(decimals)
-
-              // ERC20 transfer(to,paymentAddress,value<=limit)
-              return Utils.PermissionBuilder.for(token.contractAddress)
-                .forFunction('function transfer(address to, uint256 value)')
-                .withUintNParam('value', valueLimit, 256, Permission.ParameterOperation.LESS_THAN_OR_EQUAL, true)
-                .withAddressParam('to', paymentAddress, Permission.ParameterOperation.EQUAL, false)
-                .build()
-            })
-          : []
+      const feePermissions: any[] = []
 
       const sessionConfig = {
         chainId: polygonChainId,
