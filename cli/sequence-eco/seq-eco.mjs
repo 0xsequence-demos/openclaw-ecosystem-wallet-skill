@@ -86,6 +86,7 @@ function usage() {
 
 Env:
 - SEQUENCE_ECOSYSTEM_CONNECTOR_URL=https://<your-worker>.workers.dev
+- SEQ_ECO_DEFAULT_WEBHOOK=true (optional; make create-request use ngrok callback by default)
 - SEQUENCE_INDEXER_ACCESS_KEY=... (required for balances)
 
 Keychain service: ${SERVICE}
@@ -491,7 +492,7 @@ async function main() {
     const baseUrl = process.env.SEQUENCE_ECOSYSTEM_CONNECTOR_URL
     if (!baseUrl) throw new Error('Missing SEQUENCE_ECOSYSTEM_CONNECTOR_URL env var')
 
-    const useWebhook = args.includes('--webhook')
+    const useWebhook = args.includes('--webhook') || ['1', 'true', 'yes'].includes(String(process.env.SEQ_ECO_DEFAULT_WEBHOOK || '').toLowerCase())
 
     const rid = randomId(16)
     const kp = nacl.box.keyPair()

@@ -21,7 +21,8 @@ Required (most commands):
 - `SEQUENCE_PROJECT_ACCESS_KEY` (Sequence project access key)
 
 For connector link generation:
-- `SEQUENCE_ECOSYSTEM_CONNECTOR_URL` (defaults to the deployed worker URL if you pass it)
+- `SEQUENCE_ECOSYSTEM_CONNECTOR_URL`
+- `SEQ_ECO_DEFAULT_WEBHOOK=true` (recommended; uses ngrok callback by default)
 
 For balances via Indexer:
 - `SEQUENCE_INDEXER_ACCESS_KEY`
