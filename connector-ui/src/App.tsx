@@ -104,10 +104,13 @@ function App() {
   const rid = params.get('rid') || ''
   const walletName = params.get('wallet') || ''
   const pub = params.get('pub') || ''
+  const callbackUrl = params.get('callbackUrl') || ''
 
   const [error, setError] = useState<string>('')
   const [walletAddress, setWalletAddress] = useState<string>('')
   const [ciphertext, setCiphertext] = useState<string>('')
+  const [callbackSent, setCallbackSent] = useState<boolean>(false)
+  const [callbackFailed, setCallbackFailed] = useState<boolean>(false)
   const [balances, setBalances] = useState<BalanceSummary | null>(null)
   const [feeTokens, setFeeTokens] = useState<any | null>(null)
 
@@ -150,6 +153,8 @@ function App() {
     void feeTokens
     setError('')
     setCiphertext('')
+    setCallbackSent(false)
+    setCallbackFailed(false)
 
     if (!rid || !walletName || !pub) {
       setError('Invalid link. Missing rid/wallet/pub.')
@@ -342,7 +347,6 @@ function App() {
 
       // Optional: auto-submit ciphertext to a one-shot callback URL (e.g. ngrok tunnel).
       // This is client->server (Bloom) direct; do not proxy through the Worker backend.
-      const callbackUrl = params.get('callbackUrl')
       if (
         callbackUrl &&
         typeof callbackUrl === 'string' &&
@@ -351,13 +355,19 @@ function App() {
         callbackUrl.includes('/seq-eco/')
       ) {
         try {
-          await fetch(callbackUrl, {
+          const res = await fetch(callbackUrl, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ rid, ciphertext: ciphertextB64u })
           })
+          if (res.ok) {
+            setCallbackSent(true)
+          } else {
+            setCallbackFailed(true)
+          }
         } catch (e) {
           console.error('callback POST failed', e)
+          setCallbackFailed(true)
         }
       }
 
@@ -442,9 +452,18 @@ function App() {
 
             <div className='section'>
               <div className='label'>Next step</div>
-              <div className='text'>Copy the encrypted blob and paste it to the bot.</div>
 
-              {ciphertext && (
+              {callbackUrl && callbackSent ? (
+                <div className='text'>Encrypted session sent to Bloom. Switch back to the bot chat — Bloom will confirm once it has ingested the wallet.</div>
+              ) : callbackUrl && callbackFailed ? (
+                <div className='text'>Tried to auto-send the encrypted session to Bloom, but the callback failed. Please copy/paste the blob manually below.</div>
+              ) : callbackUrl ? (
+                <div className='text'>Sending encrypted session to Bloom…</div>
+              ) : (
+                <div className='text'>Copy the encrypted blob and paste it to the bot.</div>
+              )}
+
+              {ciphertext && (!callbackUrl || callbackFailed) && (
                 <>
                   <textarea readOnly value={ciphertext} className='textarea' />
                   <button className='button secondary' onClick={copyCiphertext}>Copy encrypted blob</button>
