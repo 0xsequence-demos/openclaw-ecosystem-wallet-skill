@@ -2,6 +2,8 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import http from 'node:http'
+import { spawn } from 'node:child_process'
 
 import keytar from 'keytar'
 import nacl from 'tweetnacl'
@@ -70,7 +72,7 @@ function installFetchLogger() {
 
 function usage() {
   console.log(`Usage:
-  seq-eco.mjs create-request --name <walletName> [--chain polygon] [--usdc-to <address> --usdc-amount <amount>]
+  seq-eco.mjs create-request --name <walletName> [--chain polygon] [--webhook] [--usdc-to <address> --usdc-amount <amount>]
   seq-eco.mjs ingest-session --name <walletName> --rid <rid> --ciphertext '<b64url>'
 
   seq-eco.mjs wallets
@@ -186,6 +188,181 @@ function explorerBase(chain) {
   return 'https://polygonscan.com/tx/'
 }
 
+function isValidB64UrlString(s) {
+  return typeof s === 'string' && /^[A-Za-z0-9_-]+$/.test(s)
+}
+
+function jsonResponse(res, code, obj) {
+  const body = JSON.stringify(obj)
+  res.writeHead(code, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(body),
+    // CORS: the connector UI will POST from a browser context
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'POST, OPTIONS',
+    'access-control-allow-headers': 'content-type'
+  })
+  res.end(body)
+}
+
+async function startOneShotWebhook() {
+  // One-shot local webhook. Strictly validates payload; stores nothing on disk.
+  const token = randomId(24)
+  const pathName = `/seq-eco/${token}`
+
+  let resolvePayload
+  let rejectPayload
+  const payloadPromise = new Promise((resolve, reject) => {
+    resolvePayload = resolve
+    rejectPayload = reject
+  })
+
+  const server = http.createServer(async (req, res) => {
+    try {
+      const url = new URL(req.url || '/', 'http://localhost')
+
+      if (req.method === 'OPTIONS') {
+        // CORS preflight
+        res.writeHead(204, {
+          'access-control-allow-origin': '*',
+          'access-control-allow-methods': 'POST, OPTIONS',
+          'access-control-allow-headers': 'content-type',
+          'access-control-max-age': '600'
+        })
+        res.end()
+        return
+      }
+
+      if (req.method !== 'POST') {
+        jsonResponse(res, 405, { ok: false, error: 'method_not_allowed' })
+        return
+      }
+
+      if (url.pathname !== pathName) {
+        jsonResponse(res, 404, { ok: false, error: 'not_found' })
+        return
+      }
+
+      const ct = String(req.headers['content-type'] || '')
+      if (!ct.toLowerCase().startsWith('application/json')) {
+        jsonResponse(res, 415, { ok: false, error: 'unsupported_media_type' })
+        return
+      }
+
+      // Hard cap body size to reduce attack surface
+      const MAX = 32 * 1024
+      const chunks = []
+      let size = 0
+      for await (const chunk of req) {
+        const b = Buffer.from(chunk)
+        size += b.length
+        if (size > MAX) {
+          jsonResponse(res, 413, { ok: false, error: 'payload_too_large' })
+          return
+        }
+        chunks.push(b)
+      }
+
+      let body
+      try {
+        body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      } catch {
+        jsonResponse(res, 400, { ok: false, error: 'invalid_json' })
+        return
+      }
+
+      // Strict schema: exactly { rid, ciphertext }
+      const keys = body && typeof body === 'object' ? Object.keys(body).sort() : []
+      if (keys.join(',') !== 'ciphertext,rid') {
+        jsonResponse(res, 400, { ok: false, error: 'invalid_schema' })
+        return
+      }
+
+      const { rid, ciphertext } = body
+
+      if (!isValidB64UrlString(rid) || rid.length < 10 || rid.length > 128) {
+        jsonResponse(res, 400, { ok: false, error: 'invalid_rid' })
+        return
+      }
+
+      if (!isValidB64UrlString(ciphertext) || ciphertext.length < 200 || ciphertext.length > 200000) {
+        jsonResponse(res, 400, { ok: false, error: 'invalid_ciphertext' })
+        return
+      }
+
+      jsonResponse(res, 200, { ok: true })
+      resolvePayload({ rid, ciphertext })
+    } catch (e) {
+      // Fail closed
+      try {
+        jsonResponse(res, 500, { ok: false, error: 'internal_error' })
+      } catch {}
+      rejectPayload(e)
+    }
+  })
+
+  await new Promise((resolve, reject) => {
+    server.listen(0, '127.0.0.1', () => resolve())
+    server.on('error', reject)
+  })
+
+  const address = server.address()
+  const port = typeof address === 'object' && address ? address.port : null
+  if (!port) throw new Error('Failed to allocate webhook port')
+
+  return {
+    server,
+    port,
+    pathName,
+    token,
+    payloadPromise
+  }
+}
+
+async function startNgrokHttpTunnel(port) {
+  // Uses ngrok's local API at 127.0.0.1:4040 to discover the public URL.
+  // Requires ngrok to be installed + authenticated on this machine.
+  const child = spawn('ngrok', ['http', String(port)], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env }
+  })
+
+  const logs = []
+  const onData = (buf) => {
+    const s = String(buf || '').trim()
+    if (s) logs.push(s.slice(0, 400))
+  }
+  child.stdout.on('data', onData)
+  child.stderr.on('data', onData)
+
+  const deadline = Date.now() + 15000
+  let publicUrl = null
+
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 250))
+    try {
+      const res = await fetch('http://127.0.0.1:4040/api/tunnels')
+      if (!res.ok) continue
+      const data = await res.json()
+      const tunnels = Array.isArray(data?.tunnels) ? data.tunnels : []
+      const https = tunnels.find((t) => String(t?.public_url || '').startsWith('https://'))
+      if (https?.public_url) {
+        publicUrl = https.public_url
+        break
+      }
+    } catch {
+      // ignore until api is ready
+    }
+  }
+
+  if (!publicUrl) {
+    try { child.kill('SIGTERM') } catch {}
+    throw new Error(`Failed to establish ngrok tunnel (logs: ${logs.slice(-5).join(' | ')})`)
+  }
+
+  return { child, publicUrl }
+}
+
 function formatUnits(raw, decimals) {
   const s = String(raw || '0')
   const neg = s.startsWith('-')
@@ -194,6 +371,78 @@ function formatUnits(raw, decimals) {
   const i = padded.slice(0, -decimals)
   const f = padded.slice(-decimals).replace(/0+$/, '')
   return `${neg ? '-' : ''}${i}${f ? '.' + f : ''}`
+}
+
+async function ingestSessionFromCiphertext({ name, rid, ciphertext }) {
+  if (!rid) throw new Error('Missing rid')
+  if (!ciphertext) throw new Error('Missing ciphertext')
+
+  const { obj } = readPrivateRequest(rid)
+  const chain = normalizeChain(obj.chain || 'polygon')
+
+  if (obj.walletName !== name) {
+    throw new Error(`Request rid=${rid} was created for walletName=${obj.walletName}, not ${name}`)
+  }
+
+  const exp = Date.parse(obj.expiresAt)
+  if (Number.isFinite(exp) && Date.now() > exp) {
+    throw new Error(`Request rid=${rid} is expired (expiresAt=${obj.expiresAt}). Create a new request.`)
+  }
+
+  const privKey = b64urlDecode(obj.privateKeyB64u)
+  const pubKey = b64urlDecode(obj.publicKeyB64u)
+  const cipherBytes = b64urlDecode(ciphertext)
+
+  const opened = sealedbox.open(cipherBytes, pubKey, privKey)
+  if (!opened) throw new Error('Failed to decrypt ciphertext')
+
+  const decrypted = Buffer.from(opened).toString('utf8')
+
+  let payload
+  try {
+    const { jsonRevivers } = await import('@0xsequence/dapp-client')
+    payload = JSON.parse(decrypted, jsonRevivers)
+  } catch {
+    payload = JSON.parse(decrypted)
+  }
+
+  const walletAddress = payload.walletAddress
+  const chainId = payload.chainId
+  const explicitSession = payload.explicitSession
+  const implicit = payload.implicit
+
+  if (!walletAddress || typeof walletAddress !== 'string') throw new Error('Missing walletAddress in payload')
+  if (chainId !== 137) throw new Error(`Unexpected chainId ${chainId} (expected 137 for Polygon)`) 
+  if (!explicitSession || typeof explicitSession !== 'object') throw new Error('Missing explicitSession in payload')
+  if (!explicitSession.pk || typeof explicitSession.pk !== 'string') throw new Error('Missing explicitSession.pk in payload')
+  if (!implicit?.pk || !implicit?.attestation || !implicit?.identitySignature) throw new Error('Missing implicit session in payload')
+
+  const implicitMeta = {
+    guard: implicit.guard,
+    loginMethod: implicit.loginMethod,
+    userEmail: implicit.userEmail
+  }
+
+  const { jsonReplacers } = await import('@0xsequence/dapp-client')
+  await keytar.setPassword(SERVICE, `explicitSession:${name}`, JSON.stringify(explicitSession, jsonReplacers))
+  await keytar.setPassword(SERVICE, `sessionPk:${name}`, explicitSession.pk)
+  await keytar.setPassword(SERVICE, `implicitPk:${name}`, implicit.pk)
+  await keytar.setPassword(SERVICE, `implicitMeta:${name}`, JSON.stringify(implicitMeta, jsonReplacers))
+
+  await keytar.setPassword(SERVICE, `implicitAttestation:${name}`, JSON.stringify(implicit.attestation, jsonReplacers))
+  await keytar.setPassword(SERVICE, `implicitIdentitySig:${name}`, JSON.stringify(implicit.identitySignature, jsonReplacers))
+
+  await keytar.setPassword(SERVICE, `wallet:${name}`, walletAddress)
+  await keytar.setPassword(SERVICE, `chain:${name}`, chain)
+
+  deletePrivateRequest(rid)
+
+  const reg = loadWalletsRegistry()
+  if (!reg.wallets) reg.wallets = {}
+  reg.wallets[name] = { name, chain, walletAddress, updatedAt: new Date().toISOString() }
+  saveWalletsRegistry(reg)
+
+  return { walletName: name, chain, rid, walletAddress }
 }
 
 async function main() {
@@ -242,13 +491,15 @@ async function main() {
     const baseUrl = process.env.SEQUENCE_ECOSYSTEM_CONNECTOR_URL
     if (!baseUrl) throw new Error('Missing SEQUENCE_ECOSYSTEM_CONNECTOR_URL env var')
 
+    const useWebhook = args.includes('--webhook')
+
     const rid = randomId(16)
     const kp = nacl.box.keyPair()
     const pub = b64urlEncode(kp.publicKey)
     const priv = b64urlEncode(kp.secretKey)
 
     const createdAt = new Date().toISOString()
-    // Give plenty of time to complete the connect flow + copy/paste on mobile.
+    // Give plenty of time to complete the connect flow.
     const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
 
     const statePath = writePrivateRequest(rid, {
@@ -277,7 +528,61 @@ async function main() {
       url.searchParams.set('erc20Amount', usdcAmount)
     }
 
-    console.log(JSON.stringify({ ok: true, walletName: name, chain, rid, url: url.toString(), expiresAt, storedState: statePath }, null, 2))
+    if (!useWebhook) {
+      console.log(JSON.stringify({ ok: true, walletName: name, chain, rid, url: url.toString(), expiresAt, storedState: statePath }, null, 2))
+      return
+    }
+
+    // Webhook mode: spin up a strict one-shot local endpoint and expose it via ngrok.
+    const webhook = await startOneShotWebhook()
+    let ngrok = null
+
+    const cleanup = () => {
+      try { webhook.server.close() } catch {}
+      try { ngrok?.child?.kill('SIGTERM') } catch {}
+    }
+
+    process.on('SIGINT', () => {
+      cleanup()
+      process.exit(130)
+    })
+
+    try {
+      ngrok = await startNgrokHttpTunnel(webhook.port)
+      const callbackUrl = `${ngrok.publicUrl}${webhook.pathName}`
+      url.searchParams.set('callbackUrl', callbackUrl)
+
+      console.log(JSON.stringify({
+        ok: true,
+        walletName: name,
+        chain,
+        rid,
+        url: url.toString(),
+        callbackUrl,
+        expiresAt,
+        storedState: statePath,
+        note: 'Waiting for connector UI to POST ciphertext to callbackUrl...'
+      }, null, 2))
+
+      const timeoutMs = 2 * 60 * 60 * 1000
+      const t = setTimeout(() => {
+        cleanup()
+        throw new Error('Timed out waiting for webhook callback')
+      }, timeoutMs)
+
+      const payload = await webhook.payloadPromise
+      clearTimeout(t)
+
+      if (payload.rid !== rid) {
+        throw new Error(`Webhook rid mismatch (expected ${rid}, got ${payload.rid})`)
+      }
+
+      const result = await ingestSessionFromCiphertext({ name, rid, ciphertext: payload.ciphertext })
+      console.log(JSON.stringify({ ok: true, mode: 'webhook', ...result }, null, 2))
+    } finally {
+      cleanup()
+    }
+
     return
   }
 
@@ -287,74 +592,8 @@ async function main() {
     if (!rid) throw new Error('Missing --rid')
     if (!ciphertext) throw new Error('Missing --ciphertext')
 
-    const { fp, obj } = readPrivateRequest(rid)
-    const chain = normalizeChain(obj.chain || 'polygon')
-
-    if (obj.walletName !== name) {
-      throw new Error(`Request rid=${rid} was created for walletName=${obj.walletName}, not ${name}`)
-    }
-
-    const exp = Date.parse(obj.expiresAt)
-    if (Number.isFinite(exp) && Date.now() > exp) {
-      throw new Error(`Request rid=${rid} is expired (expiresAt=${obj.expiresAt}). Create a new request.`)
-    }
-
-    const privKey = b64urlDecode(obj.privateKeyB64u)
-    const pubKey = b64urlDecode(obj.publicKeyB64u)
-    const cipherBytes = b64urlDecode(ciphertext)
-
-    const opened = sealedbox.open(cipherBytes, pubKey, privKey)
-    if (!opened) throw new Error('Failed to decrypt ciphertext')
-
-    const decrypted = Buffer.from(opened).toString('utf8')
-    // Payload may include BigInt/Uint8Array encoded via dapp-client jsonReplacers.
-    // Attempt to revive back into JS types.
-    let payload
-    try {
-      const { jsonRevivers } = await import('@0xsequence/dapp-client')
-      payload = JSON.parse(decrypted, jsonRevivers)
-    } catch {
-      payload = JSON.parse(decrypted)
-    }
-
-    const walletAddress = payload.walletAddress
-    const chainId = payload.chainId
-    const explicitSession = payload.explicitSession
-    const implicit = payload.implicit
-
-    if (!walletAddress || typeof walletAddress !== 'string') throw new Error('Missing walletAddress in payload')
-    if (chainId !== 137) throw new Error(`Unexpected chainId ${chainId} (expected 137 for Polygon)`) 
-    if (!explicitSession || typeof explicitSession !== 'object') throw new Error('Missing explicitSession in payload')
-    if (!explicitSession.pk || typeof explicitSession.pk !== 'string') throw new Error('Missing explicitSession.pk in payload')
-    if (!implicit?.pk || !implicit?.attestation || !implicit?.identitySignature) throw new Error('Missing implicit session in payload')
-
-    const implicitMeta = {
-      guard: implicit.guard,
-      loginMethod: implicit.loginMethod,
-      userEmail: implicit.userEmail,
-    }
-
-    // Store full explicit session JSON (BigInt-safe) and also keep pk for convenience.
-    const { jsonReplacers } = await import('@0xsequence/dapp-client')
-    await keytar.setPassword(SERVICE, `explicitSession:${name}`, JSON.stringify(explicitSession, jsonReplacers))
-    await keytar.setPassword(SERVICE, `sessionPk:${name}`, explicitSession.pk)
-    await keytar.setPassword(SERVICE, `implicitPk:${name}`, implicit.pk)
-    await keytar.setPassword(SERVICE, `implicitMeta:${name}`, JSON.stringify(implicitMeta, jsonReplacers))
-
-    await keytar.setPassword(SERVICE, `implicitAttestation:${name}`, JSON.stringify(implicit.attestation, jsonReplacers))
-    await keytar.setPassword(SERVICE, `implicitIdentitySig:${name}`, JSON.stringify(implicit.identitySignature, jsonReplacers))
-
-    await keytar.setPassword(SERVICE, `wallet:${name}`, walletAddress)
-    await keytar.setPassword(SERVICE, `chain:${name}`, chain)
-
-    deletePrivateRequest(rid)
-
-    const reg = loadWalletsRegistry()
-    if (!reg.wallets) reg.wallets = {}
-    reg.wallets[name] = { name, chain, walletAddress, updatedAt: new Date().toISOString() }
-    saveWalletsRegistry(reg)
-
-    console.log(JSON.stringify({ ok: true, walletName: name, chain, rid, walletAddress }, null, 2))
+    const result = await ingestSessionFromCiphertext({ name, rid, ciphertext })
+    console.log(JSON.stringify({ ok: true, ...result }, null, 2))
     return
   }
 

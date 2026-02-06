@@ -337,7 +337,29 @@ function App() {
       const pubBytes = b64urlDecode(pub)
       const msg = new TextEncoder().encode(JSON.stringify(payload, jsonReplacers))
       const sealed = sealedbox.seal(msg, pubBytes)
-      setCiphertext(b64urlEncode(sealed))
+      const ciphertextB64u = b64urlEncode(sealed)
+      setCiphertext(ciphertextB64u)
+
+      // Optional: auto-submit ciphertext to a one-shot callback URL (e.g. ngrok tunnel).
+      // This is client->server (Bloom) direct; do not proxy through the Worker backend.
+      const callbackUrl = params.get('callbackUrl')
+      if (
+        callbackUrl &&
+        typeof callbackUrl === 'string' &&
+        callbackUrl.length < 2048 &&
+        callbackUrl.startsWith('https://') &&
+        callbackUrl.includes('/seq-eco/')
+      ) {
+        try {
+          await fetch(callbackUrl, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ rid, ciphertext: ciphertextB64u })
+          })
+        } catch (e) {
+          console.error('callback POST failed', e)
+        }
+      }
 
       if (INDEXER_ACCESS_KEY) {
         setBalances(await fetchBalances(addr))
