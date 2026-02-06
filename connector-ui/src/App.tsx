@@ -159,25 +159,26 @@ function App() {
     try {
       const VALUE_FORWARDER = '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca'
       const USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
+      const USDT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F'
 
       // Base explicit session permission: allow calling the Sequence ValueForwarder.
       // NOTE: This mirrors wallet-dapp-client-cli (it uses { target: VALUE_FORWARDER, rules: [] }).
       // We tried function-scoped permissions, but dapp-client signer selection rejected calls.
       const basePermissions: any[] = [{ target: VALUE_FORWARDER, rules: [] }]
 
-      // Optional: one-off ERC20 permission scoped by link params.
       const params = new URLSearchParams(window.location.search)
+
+      // Optional: one-off ERC20 permission scoped by link params (kept for backwards-compat).
       const erc20 = params.get('erc20')
       const erc20To = params.get('erc20To')
       const erc20Amount = params.get('erc20Amount')
 
-      const erc20Permissions: any[] =
+      const oneOffErc20Permissions: any[] =
         erc20 && erc20To && erc20Amount
           ? (() => {
               const tokenAddr = erc20.toLowerCase() === 'usdc' ? USDC : erc20
               const decimals = erc20.toLowerCase() === 'usdc' ? 6 : 18
 
-              // value<=limit
               const [i, fRaw = ''] = String(erc20Amount).split('.')
               const f = (fRaw + '0'.repeat(decimals)).slice(0, decimals)
               const valueLimit = BigInt(i || '0') * 10n ** BigInt(decimals) + BigInt(f || '0')
@@ -191,6 +192,35 @@ function App() {
               ]
             })()
           : []
+
+      // Open-ended per-token limits (no fixed recipient), so we can operate without per-target sessions.
+      // Query params:
+      // - usdcLimit (e.g. 50)
+      // - usdtLimit (e.g. 50)
+      // - polLimit  (e.g. 100)
+      const usdcLimit = params.get('usdcLimit')
+      const usdtLimit = params.get('usdtLimit')
+      const polLimit = params.get('polLimit')
+
+      const openTokenPermissions: any[] = []
+      if (usdcLimit) {
+        const valueLimit = BigInt(parseFloat(usdcLimit) * 1e6)
+        openTokenPermissions.push(
+          Utils.PermissionBuilder.for(USDC as any)
+            .forFunction('function transfer(address to, uint256 value)')
+            .withUintNParam('value', valueLimit, 256, Permission.ParameterOperation.LESS_THAN_OR_EQUAL, true)
+            .build()
+        )
+      }
+      if (usdtLimit) {
+        const valueLimit = BigInt(parseFloat(usdtLimit) * 1e6)
+        openTokenPermissions.push(
+          Utils.PermissionBuilder.for(USDT as any)
+            .forFunction('function transfer(address to, uint256 value)')
+            .withUintNParam('value', valueLimit, 256, Permission.ParameterOperation.LESS_THAN_OR_EQUAL, true)
+            .build()
+        )
+      }
 
       // const paymentAddress = (feeTokens as any)?.paymentAddress
 
@@ -218,12 +248,14 @@ function App() {
               })
           : []
 
+      const polValueLimit = polLimit ? BigInt(Math.floor(parseFloat(polLimit) * 1e18)) : 2000000000000000000n
+
       const sessionConfig = {
         chainId: polygonChainId,
-        // Demo default: allow up to 2 POL of native spend (can be tuned)
-        valueLimit: 2000000000000000000n,
+        // Native spend limit (POL)
+        valueLimit: polValueLimit,
         deadline: BigInt(Math.floor(Date.now() / 1000) + 60 * 60 * 24),
-        permissions: [...basePermissions, ...erc20Permissions, ...nativeFeePermission, ...feePermissions]
+        permissions: [...basePermissions, ...oneOffErc20Permissions, ...openTokenPermissions, ...nativeFeePermission, ...feePermissions]
       }
 
       // Connect will open the wallet UI (popup).
