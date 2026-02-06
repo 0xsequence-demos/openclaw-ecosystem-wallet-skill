@@ -208,8 +208,9 @@ async function main() {
 
   if (!name) throw new Error('Missing --name')
   if (!amount) throw new Error('Missing --amount')
-  if (from !== 'USDC') throw new Error('Only --from USDC supported for now')
-  if (!['POL', 'USDT'].includes(toSym)) throw new Error('Only --to POL or --to USDT supported for now')
+  if (!['USDC', 'USDT'].includes(from)) throw new Error('Only --from USDC or USDT supported for now')
+  if (!['POL', 'USDT', 'USDC'].includes(toSym)) throw new Error('Only --to POL, USDT, or USDC supported for now')
+  if (from === toSym) throw new Error('from and to token must be different')
   if (!Number.isFinite(slippage) || slippage <= 0 || slippage >= 0.5) throw new Error('Invalid --slippage')
 
   const TRAILS_API_KEY = process.env.TRAILS_API_KEY || process.env.SEQUENCE_PROJECT_ACCESS_KEY
@@ -230,12 +231,18 @@ async function main() {
 
   const originTokenAmount = parseUnits(amount, 6).toString()
 
-  const destinationTokenAddress = toSym === 'POL' ? NATIVE : USDT
+  const originTokenAddress = from === 'USDC' ? USDC : USDT
+  const destinationTokenAddress =
+    toSym === 'POL'
+      ? NATIVE
+      : toSym === 'USDT'
+        ? USDT
+        : USDC
 
   const quoteReq = {
     ownerAddress: walletAddress,
     originChainId: chainId,
-    originTokenAddress: USDC,
+    originTokenAddress,
     originTokenAmount,
     destinationChainId: chainId,
     destinationTokenAddress,
