@@ -209,7 +209,7 @@ async function main() {
   if (!name) throw new Error('Missing --name')
   if (!amount) throw new Error('Missing --amount')
   if (from !== 'USDC') throw new Error('Only --from USDC supported for now')
-  if (toSym !== 'POL') throw new Error('Only --to POL supported for now')
+  if (!['POL', 'USDT'].includes(toSym)) throw new Error('Only --to POL or --to USDT supported for now')
   if (!Number.isFinite(slippage) || slippage <= 0 || slippage >= 0.5) throw new Error('Invalid --slippage')
 
   const TRAILS_API_KEY = process.env.TRAILS_API_KEY || process.env.SEQUENCE_PROJECT_ACCESS_KEY
@@ -223,11 +223,14 @@ async function main() {
 
   const chainId = 137
   const USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
+  const USDT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F'
   const NATIVE = '0x0000000000000000000000000000000000000000'
 
   const { client, walletAddress } = await createDappClient({ walletName: name, chainId })
 
   const originTokenAmount = parseUnits(amount, 6).toString()
+
+  const destinationTokenAddress = toSym === 'POL' ? NATIVE : USDT
 
   const quoteReq = {
     ownerAddress: walletAddress,
@@ -235,7 +238,7 @@ async function main() {
     originTokenAddress: USDC,
     originTokenAmount,
     destinationChainId: chainId,
-    destinationTokenAddress: NATIVE,
+    destinationTokenAddress,
     destinationTokenAmount: '0',
     tradeType: TradeType.EXACT_INPUT,
     options: {
