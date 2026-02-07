@@ -529,6 +529,15 @@ async function main() {
       url.searchParams.set('erc20Amount', usdcAmount)
     }
 
+    // Open-ended per-token limits (no fixed recipient)
+    // These map to connector UI query params.
+    const polLimit = getArg(args, '--pol-limit')
+    const usdcLimit = getArg(args, '--usdc-limit')
+    const usdtLimit = getArg(args, '--usdt-limit')
+    if (polLimit) url.searchParams.set('polLimit', polLimit)
+    if (usdcLimit) url.searchParams.set('usdcLimit', usdcLimit)
+    if (usdtLimit) url.searchParams.set('usdtLimit', usdtLimit)
+
     if (!useWebhook) {
       console.log(JSON.stringify({ ok: true, walletName: name, chain, rid, url: url.toString(), expiresAt, storedState: statePath }, null, 2))
       return
