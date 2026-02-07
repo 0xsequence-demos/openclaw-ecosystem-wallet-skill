@@ -171,15 +171,9 @@ function App() {
       // We tried function-scoped permissions, but dapp-client signer selection rejected calls.
       const params = new URLSearchParams(window.location.search)
 
-      // Allow calling the Sequence ValueForwarder.
-      // Additionally, if the link provides a walletAddress hint, allow calling the wallet itself.
-      // This is required for internal wallet self-calls like config updates.
-      const walletAddressHint = params.get('walletAddress') || ''
-      const walletSelfPermission: any[] = /^0x[0-9a-fA-F]{40}$/.test(walletAddressHint)
-        ? [{ target: walletAddressHint, rules: [] }]
-        : []
-
-      const basePermissions: any[] = [{ target: VALUE_FORWARDER, rules: [] }, ...walletSelfPermission]
+      // Base explicit session permission: allow calling the Sequence ValueForwarder.
+      // Config updates are expected to be handled by the SDK automatically (bundled as needed).
+      const basePermissions: any[] = [{ target: VALUE_FORWARDER, rules: [] }]
 
       // Optional: one-off ERC20 permission scoped by link params (kept for backwards-compat).
       const erc20 = params.get('erc20')

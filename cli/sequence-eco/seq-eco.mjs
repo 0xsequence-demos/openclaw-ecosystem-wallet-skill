@@ -781,32 +781,30 @@ async function main() {
 
     await client.initialize()
 
-    // Minimal call: forwardValue(walletAddress, 0) to force wallet to build against an updated config.
-    const forwardTo = '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca'
-    const selector = '0x15dacbea' // forwardValue(address,uint256)
-    const pad = (hex, n = 64) => String(hex).replace(/^0x/, '').padStart(n, '0')
-    const data = selector + pad(walletAddress) + pad('0x0')
-    const transactions = [{ to: forwardTo, value: 0n, data }]
+    // NOTE: Deprecated.
+    // The Sequence SDK is expected to bundle configuration updates automatically as part of normal
+    // transactions. We previously attempted to force an explicit config update by overriding
+    // wallet.prepareTransaction({ noConfigUpdate: false }) which resulted in simulation reverts.
 
-    if (!broadcast) {
-      console.log(JSON.stringify({ ok: true, dryRun: true, walletName: name, walletAddress, kind: 'config-update', transactions }, null, 2))
-      return
+    if (broadcast) {
+      throw new Error('config-update --broadcast is deprecated. Config updates should be bundled automatically by the SDK during normal sends (send-pol/send-usdc/etc).')
     }
 
-    // Force config updates while building the envelope (dapp-client hardcodes noConfigUpdate:true)
-    const mgr = client.getChainSessionManager(137)
-    const origPrepare = mgr.wallet.prepareTransaction.bind(mgr.wallet)
-    mgr.wallet.prepareTransaction = async (provider, calls, opts) => {
-      return await origPrepare(provider, calls, { ...(opts || {}), noConfigUpdate: false })
-    }
-
-    const feeOptions = await client.getFeeOptions(137, transactions)
-    const feeOpt =
-      (feeOptions || []).find((o) => !o?.token?.contractAddress || o?.token?.contractAddress === '0x0000000000000000000000000000000000000000') ||
-      feeOptions?.[0]
-    const txHash = await client.sendTransaction(137, transactions, feeOpt)
-
-    console.log(JSON.stringify({ ok: true, walletName: name, walletAddress, kind: 'config-update', txHash, explorerUrl: `${explorerBase('polygon')}${txHash}` }, null, 2))
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          dryRun: true,
+          walletName: name,
+          walletAddress,
+          kind: 'config-update',
+          deprecated: true,
+          note: 'No action taken. Run a normal transaction; SDK should bundle any required config updates automatically.'
+        },
+        null,
+        2
+      )
+    )
     return
   }
 
