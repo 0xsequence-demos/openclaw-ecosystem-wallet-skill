@@ -159,6 +159,31 @@ export async function sendTransactionViaDappClientCli({ walletName, chainId, tra
     'index.js'
   )
 
+  // dapp-client-cli requires a fee option for dispatch in some relayer setups.
+  // We keep the wrapper resilient by auto-selecting a default fee option via the CLI itself.
+  const feeOptsArgs = [
+    '--state',
+    statePath,
+    '--passphrase',
+    passphrase,
+    '--no-listen',
+    '--no-open-url',
+    'fee-options',
+    '--chain-id',
+    String(chainId),
+    '--transactions',
+    txPath,
+  ]
+  const { stdout: feeStdout } = await execFileAsync('node', [bin, ...feeOptsArgs], {
+    env: { ...process.env },
+  })
+  const feeOptions = JSON.parse(feeStdout)
+  if (!Array.isArray(feeOptions) || feeOptions.length === 0) {
+    throw new Error('No fee options returned by dapp-client-cli')
+  }
+  const isNative = (o) => !o?.token?.contractAddress || o?.token?.contractAddress === '0x0000000000000000000000000000000000000000'
+  const feeOption = feeOptions.find(isNative) || feeOptions[0]
+
   const args = [
     '--state',
     statePath,
@@ -171,6 +196,8 @@ export async function sendTransactionViaDappClientCli({ walletName, chainId, tra
     String(chainId),
     '--transactions',
     txPath,
+    '--fee-option',
+    JSON.stringify(feeOption),
   ]
 
   const { stdout } = await execFileAsync('node', [bin, ...args], {
