@@ -171,9 +171,16 @@ function App() {
       // We tried function-scoped permissions, but dapp-client signer selection rejected calls.
       const params = new URLSearchParams(window.location.search)
 
-      // Base explicit session permission: allow calling the Sequence ValueForwarder.
+      // Base explicit session permissions:
+      // - ValueForwarder: where we route ETH/token sends.
+      // - Sessions module: dapp-client may inject a `prepareIncrement(...)` call targeting the sessions module itself.
+      //   If we don't allow this target, relayer simulation reverts (custom error 0x540733ea).
       // Config updates are expected to be handled by the SDK automatically (bundled as needed).
-      const basePermissions: any[] = [{ target: VALUE_FORWARDER, rules: [] }]
+      const SESSIONS_MODULE = '0x00000000000030Bcc832F7d657f50D6Be35C92b3'
+      const basePermissions: any[] = [
+        { target: VALUE_FORWARDER, rules: [] },
+        { target: SESSIONS_MODULE, rules: [] }
+      ]
 
       // Optional: one-off ERC20 permission scoped by link params (kept for backwards-compat).
       const erc20 = params.get('erc20')
