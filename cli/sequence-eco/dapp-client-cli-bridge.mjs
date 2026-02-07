@@ -41,10 +41,14 @@ export async function syncStateFromKeychain({ walletName, chainId }) {
   const implicitPk = await keytar.getPassword(SERVICE, `implicitPk:${walletName}`)
   const implicitAttRaw = await keytar.getPassword(SERVICE, `implicitAttestation:${walletName}`)
   const implicitSigRaw = await keytar.getPassword(SERVICE, `implicitIdentitySig:${walletName}`)
+  const implicitMetaRaw = await keytar.getPassword(SERVICE, `implicitMeta:${walletName}`)
 
   if (!walletAddress) throw new Error(`Missing wallet address in Keychain: wallet:${walletName}`)
   if (!explicitRaw) throw new Error(`Missing explicit session in Keychain: explicitSession:${walletName}`)
   if (!implicitPk || !implicitAttRaw || !implicitSigRaw) throw new Error('Missing implicit session material in Keychain')
+
+  const { jsonRevivers } = await import('@0xsequence/dapp-client')
+  const implicitMeta = implicitMetaRaw ? JSON.parse(implicitMetaRaw, jsonRevivers) : {}
 
   const { StateManager } = await import('@0xsequence/dapp-client-cli/dist/state.js')
   const { FileSequenceStorage, FileSessionStorage } = await import('@0xsequence/dapp-client-cli/dist/storage.js')
@@ -79,22 +83,39 @@ export async function syncStateFromKeychain({ walletName, chainId }) {
     state.storage.pendingRequest = null
     state.storage.explicitSessions = []
     state.storage.implicitSession = null
-    state.storage.sessionlessConnection = null
-    state.storage.sessionlessConnectionSnapshot = null
+
+    // Important: set these so DappClient.getWalletAddress() is available and the client behaves like a connected state.
+    state.storage.sessionlessConnection = { walletAddress }
+    state.storage.sessionlessConnectionSnapshot = { walletAddress }
   })
 
   // Save explicit + implicit sessions into the CLI state.
   // We keep only the fields dapp-client needs.
-  const { jsonRevivers } = await import('@0xsequence/dapp-client')
   const explicitSession = JSON.parse(explicitRaw, jsonRevivers)
 
   await storage.saveExplicitSession({
     pk: explicitSession.pk,
     walletAddress,
     chainId,
-    loginMethod: explicitSession.loginMethod,
-    userEmail: explicitSession.userEmail,
-    guard: explicitSession.guard,
+    loginMethod: implicitMeta.loginMethod ?? explicitSession.loginMethod,
+    userEmail: implicitMeta.userEmail ?? explicitSession.userEmail,
+    guard: implicitMeta.guard,
+  })
+
+  // Also persist a lightweight "connected" identity (not a session secret) for better CLI behavior.
+  await stateManager.update((state) => {
+    state.storage.sessionlessConnection = {
+      walletAddress,
+      loginMethod: implicitMeta.loginMethod ?? explicitSession.loginMethod,
+      userEmail: implicitMeta.userEmail ?? explicitSession.userEmail,
+      guard: implicitMeta.guard,
+    }
+    state.storage.sessionlessConnectionSnapshot = {
+      walletAddress,
+      loginMethod: implicitMeta.loginMethod ?? explicitSession.loginMethod,
+      userEmail: implicitMeta.userEmail ?? explicitSession.userEmail,
+      guard: implicitMeta.guard,
+    }
   })
 
   const implicitAttestation = JSON.parse(implicitAttRaw, jsonRevivers)
