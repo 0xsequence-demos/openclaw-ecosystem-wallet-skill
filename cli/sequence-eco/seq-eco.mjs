@@ -29,7 +29,7 @@ function installFetchLogger() {
   const redact = (s) =>
     String(s)
       // avoid leaking huge payloads into logs
-      .slice(0, 4000)
+      .slice(0, 40000)
 
   const log = (line) => {
     fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${line}\n`, 'utf8')
