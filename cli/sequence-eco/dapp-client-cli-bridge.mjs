@@ -174,10 +174,25 @@ export async function sendTransactionViaDappClientCli({ walletName, chainId, tra
     '--transactions',
     txPath,
   ]
-  const { stdout: feeStdout } = await execFileAsync('node', [bin, ...feeOptsArgs], {
+  const { stdout: feeStdout, stderr: feeStderr } = await execFileAsync('node', [bin, ...feeOptsArgs], {
     env: { ...process.env },
   })
-  const feeOptions = JSON.parse(feeStdout)
+
+  function parseJsonFromMixedOutput(text) {
+    const s = String(text || '').trim()
+    // Some deps may print logs to stdout; try to locate the JSON payload.
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i]
+      if (ch !== '{' && ch !== '[') continue
+      const candidate = s.slice(i).trim()
+      try {
+        return JSON.parse(candidate)
+      } catch {}
+    }
+    throw new Error(`Could not find JSON in output. stdout.head=${JSON.stringify(s.slice(0, 120))} stderr.head=${JSON.stringify(String(feeStderr || '').slice(0, 120))}`)
+  }
+
+  const feeOptions = parseJsonFromMixedOutput(feeStdout)
   if (!Array.isArray(feeOptions) || feeOptions.length === 0) {
     throw new Error('No fee options returned by dapp-client-cli')
   }
