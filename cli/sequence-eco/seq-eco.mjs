@@ -1148,7 +1148,9 @@ async function main() {
     const pad = (hex, n = 64) => String(hex).replace(/^0x/, '').padStart(n, '0')
     const data = selector + pad(to) + pad('0x' + value.toString(16))
 
-    const transactions = [{ to: forwardTo, value: 0n, data }]
+    // IMPORTANT: ValueForwarder expects the forwarded amount to be provided as msg.value.
+    // We also include the amount in calldata for forwardValue(address,uint256).
+    const transactions = [{ to: forwardTo, value, data }]
 
     if (!broadcast) {
       const bigintReplacer = (_k, v) => (typeof v === 'bigint' ? v.toString() : v)
