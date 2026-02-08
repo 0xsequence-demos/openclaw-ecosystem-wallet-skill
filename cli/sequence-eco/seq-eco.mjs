@@ -1003,32 +1003,53 @@ async function main() {
         ? (feeOptions || []).find((o) => !o?.token?.contractAddress) || feeOptions?.[0]
         : feeOptions?.[0]
     } catch (e) {
-      // Workaround: in some relayer scenarios (notably undeployed wallets), FeeOptions simulation can fail.
-      // We still may be able to dispatch successfully if we provide a fee option explicitly.
+      // Workaround: in some relayer scenarios (notably undeployed wallets), FeeOptions can fail due to
+      // an incorrect relayer feeOptions request shape (wallet/to mismatch) and/or simulation quirks.
+      // Try a "direct" feeOptions call first; if that still fails, fall back to forcing a small fee option.
       const enabled = !['0', 'false', 'no'].includes(String(process.env.SEQ_ECO_FEEOPTIONS_WORKAROUND || 'true').toLowerCase())
       if (!enabled) throw e
 
-      let feeTokens
+      // 1) Try to fetch fee options directly from the chain manager's relayer, using the *wallet address*
+      // (not the signedCall.to / guest module address). This avoids the relayer 400 we observed.
       try {
-        feeTokens = await client.getFeeTokens(chainId)
+        const mgr = client.getChainSessionManager ? client.getChainSessionManager(chainId) : null
+        const direct = await mgr?.relayer?.feeOptions?.(walletAddress, chainId, transactions)
+        const opts = direct?.options
+        if (Array.isArray(opts) && opts.length) {
+          feeOpt = preferNativeFee
+            ? opts.find((o) => !o?.token?.contractAddress) || opts[0]
+            : opts[0]
+        }
       } catch {
-        throw e
+        // ignore, fall back
       }
 
-      const paymentAddress = feeTokens?.paymentAddress
-      const tokens = Array.isArray(feeTokens?.tokens) ? feeTokens.tokens : []
-      const token = tokens.find((t) => t?.contractAddress) || null
-      if (!paymentAddress || !token) throw e
+      if (feeOpt) {
+        // got an option without hitting the broken FeeOptions path
+      } else {
+        // 2) Forced fee option: pick a fee token and pay a small amount to paymentAddress.
+        let feeTokens
+        try {
+          feeTokens = await client.getFeeTokens(chainId)
+        } catch {
+          throw e
+        }
 
-      const decimals = typeof token.decimals === 'number' ? token.decimals : 6
-      // Default to a small fee payment (0.001 token units).
-      const feeValue = decimals >= 3 ? 10 ** (decimals - 3) : 1
+        const paymentAddress = feeTokens?.paymentAddress
+        const tokens = Array.isArray(feeTokens?.tokens) ? feeTokens.tokens : []
+        const token = tokens.find((t) => t?.contractAddress) || null
+        if (!paymentAddress || !token) throw e
 
-      feeOpt = {
-        token,
-        to: paymentAddress,
-        value: String(feeValue),
-        gasLimit: 0
+        const decimals = typeof token.decimals === 'number' ? token.decimals : 6
+        // Default to a small fee payment (0.001 token units).
+        const feeValue = decimals >= 3 ? 10 ** (decimals - 3) : 1
+
+        feeOpt = {
+          token,
+          to: paymentAddress,
+          value: String(feeValue),
+          gasLimit: 0
+        }
       }
     }
 
