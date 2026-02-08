@@ -192,8 +192,29 @@ function App() {
       const usdcLimit = params.get('usdcLimit')
       const usdtLimit = params.get('usdtLimit')
       const nativeLimit = params.get('nativeLimit') || params.get('polLimit')
+      const tokenLimitsRaw = params.get('tokenLimits')
 
       const openTokenPermissions: any[] = []
+
+      // Generic ERC20 limits via token-directory: tokenLimits=USDC:50,WETH:0.1
+      const dynamicTokenPermissions: any[] = []
+      if (tokenLimitsRaw) {
+        const parts = tokenLimitsRaw.split(',').map(s => s.trim()).filter(Boolean)
+        for (const p of parts) {
+          const [sym, amt] = p.split(':').map(x => (x || '').trim())
+          if (!sym || !amt) throw new Error(`Invalid tokenLimits entry: ${p}`)
+          const td = await resolveErc20Symbol(chainId, sym)
+          if (!td) throw new Error(`${sym} not found for this chain in token-directory`)
+          const decimals = td.decimals
+          const valueLimit = BigInt(Math.floor(parseFloat(amt) * 10 ** decimals))
+          dynamicTokenPermissions.push(
+            Utils.PermissionBuilder.for(td.address as any)
+              .forFunction('function transfer(address to, uint256 value)')
+              .withUintNParam('value', valueLimit, 256, Permission.ParameterOperation.LESS_THAN_OR_EQUAL, true)
+              .build()
+          )
+        }
+      }
       if (usdcLimit) {
         if (!USDC) throw new Error('USDC not found for this chain in token-directory')
         const valueLimit = BigInt(parseFloat(usdcLimit) * 1e6)

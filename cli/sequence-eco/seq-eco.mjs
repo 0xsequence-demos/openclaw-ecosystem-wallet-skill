@@ -178,6 +178,14 @@ function getArg(args, k) {
   return args[i + 1] ?? null
 }
 
+function getArgs(args, k) {
+  const out = []
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === k && i + 1 < args.length) out.push(args[i + 1])
+  }
+  return out
+}
+
 function normalizeChain(raw) {
   // Back-compat helper for older links/flags.
   const c = String(raw || '').toLowerCase()
@@ -563,6 +571,13 @@ async function main() {
     if (nativeLimit) url.searchParams.set('nativeLimit', nativeLimit)
     if (usdcLimit) url.searchParams.set('usdcLimit', usdcLimit)
     if (usdtLimit) url.searchParams.set('usdtLimit', usdtLimit)
+
+    // Generic token limits via token-directory symbols.
+    // Repeatable: --token-limit USDC:50 --token-limit WETH:0.2
+    const tokenLimits = getArgs(args, '--token-limit')
+      .map((s) => String(s || '').trim())
+      .filter(Boolean)
+    if (tokenLimits.length) url.searchParams.set('tokenLimits', tokenLimits.join(','))
 
     if (!useWebhook) {
       console.log(JSON.stringify({ ok: true, walletName: name, chain, rid, url: url.toString(), expiresAt, storedState: statePath }, null, 2))
@@ -1048,14 +1063,29 @@ async function main() {
   }
 
   if (cmd === 'send-erc20') {
-    const token = getArg(args, '--token')
-    const decimalsRaw = getArg(args, '--decimals')
+    const symbol = getArg(args, '--symbol')
+    let token = getArg(args, '--token')
+    let decimalsRaw = getArg(args, '--decimals')
+
     const to = getArg(args, '--to')
     const amount = getArg(args, '--amount')
     const broadcast = args.includes('--broadcast')
 
-    if (!token || !decimalsRaw || !to || !amount) {
-      throw new Error('Missing --token, --decimals, --to and/or --amount')
+    if (!to || !amount) throw new Error('Missing --to and/or --amount')
+
+    // If --symbol is provided, resolve token address/decimals via token-directory for this chain.
+    const storedChain = await keytar.getPassword(SERVICE, `chain:${name}`)
+    const net = resolveNetworkFromChain(getArg(args, '--chain') || storedChain || 'polygon')
+
+    if (symbol) {
+      const td = await resolveErc20BySymbol({ chainId: net.chainId, symbol })
+      if (!td) throw new Error(`Unknown token symbol ${symbol} on chain ${net.name} (${net.chainId})`)
+      token = td.address
+      decimalsRaw = String(td.decimals)
+    }
+
+    if (!token || !decimalsRaw) {
+      throw new Error('Missing token spec. Provide either (--token + --decimals) or --symbol.')
     }
 
     const decimalsNum = Number(decimalsRaw)
@@ -1069,9 +1099,6 @@ async function main() {
     const walletUrl = process.env.SEQUENCE_ECOSYSTEM_WALLET_URL || DEFAULT_WALLET_URL
     const dappOrigin = process.env.SEQUENCE_DAPP_ORIGIN || process.env.SEQUENCE_ECOSYSTEM_CONNECTOR_URL || ''
     if (!dappOrigin) throw new Error('Missing SEQUENCE_DAPP_ORIGIN (should match the connector UI origin)')
-
-    const storedChain = await keytar.getPassword(SERVICE, `chain:${name}`)
-    const net = resolveNetworkFromChain(getArg(args, '--chain') || storedChain || 'polygon')
 
     const parseUnits = (s, d) => {
       const [i, fRaw = ''] = String(s).split('.')
