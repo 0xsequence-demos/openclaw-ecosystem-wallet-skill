@@ -7,6 +7,7 @@ import sealedbox from 'tweetnacl-sealedbox-js'
 
 import { dappOrigin, projectAccessKey, walletUrl, relayerUrl, nodesUrl } from './config'
 import { fetchBalancesAllChains, pickChainBalances, resolveChainId, resolveNetwork } from './indexer'
+import { resolveErc20Symbol } from './tokenDirectory'
 
 function b64urlDecode(str: string): Uint8Array {
   const norm = str.replace(/-/g, '+').replace(/_/g, '/')
@@ -144,8 +145,9 @@ function App() {
 
     try {
       const VALUE_FORWARDER = '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca'
-      const USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
-      const USDT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F'
+      // Resolve ERC20 addresses per-chain via Sequence Token Directory
+      const USDC = (await resolveErc20Symbol(chainId, 'USDC'))?.address
+      const USDT = (await resolveErc20Symbol(chainId, 'USDT'))?.address
 
       // Base explicit session permissions:
       // - ValueForwarder: where we route native token sends (open-ended recipient).
@@ -193,6 +195,7 @@ function App() {
 
       const openTokenPermissions: any[] = []
       if (usdcLimit) {
+        if (!USDC) throw new Error('USDC not found for this chain in token-directory')
         const valueLimit = BigInt(parseFloat(usdcLimit) * 1e6)
         openTokenPermissions.push(
           Utils.PermissionBuilder.for(USDC as any)
@@ -202,6 +205,7 @@ function App() {
         )
       }
       if (usdtLimit) {
+        if (!USDT) throw new Error('USDT not found for this chain in token-directory')
         const valueLimit = BigInt(parseFloat(usdtLimit) * 1e6)
         openTokenPermissions.push(
           Utils.PermissionBuilder.for(USDT as any)

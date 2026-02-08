@@ -10,6 +10,7 @@ import nacl from 'tweetnacl'
 import sealedbox from 'tweetnacl-sealedbox-js'
 
 import { Network } from '@0xsequence/wallet-primitives'
+import { resolveErc20BySymbol } from './token-directory.mjs'
 
 const SERVICE = 'openclaw.sequence-ecosystem'
 
@@ -84,6 +85,7 @@ function usage() {
   seq-eco.mjs balances --name <walletName> [--chain <networkName|chainId>]
   seq-eco.mjs send-native --name <walletName> --to <address> --amount <native> [--broadcast]
   seq-eco.mjs send-erc20 --name <walletName> --token <address> --decimals <n> --to <address> --amount <tokenAmount> [--broadcast]
+  seq-eco.mjs send-token --name <walletName> --symbol <SYMBOL> --to <address> --amount <tokenAmount> [--broadcast]
   (aliases: send-pol → send-native)
   seq-eco.mjs config-update --name <walletName> [--broadcast]
 
@@ -986,6 +988,63 @@ async function main() {
 
     const txHash = await client.sendTransaction(chainId, transactions, feeOpt)
     return { walletAddress, txHash }
+  }
+
+  if (cmd === 'send-token') {
+    const symbol = getArg(args, '--symbol')
+    const to = getArg(args, '--to')
+    const amount = getArg(args, '--amount')
+    const broadcast = args.includes('--broadcast')
+
+    if (!symbol || !to || !amount) throw new Error('Missing --symbol, --to and/or --amount')
+
+    const projectAccessKey = process.env.SEQUENCE_PROJECT_ACCESS_KEY
+    if (!projectAccessKey) throw new Error('Missing SEQUENCE_PROJECT_ACCESS_KEY env var')
+
+    const walletUrl = process.env.SEQUENCE_ECOSYSTEM_WALLET_URL || DEFAULT_WALLET_URL
+    const dappOrigin = process.env.SEQUENCE_DAPP_ORIGIN || process.env.SEQUENCE_ECOSYSTEM_CONNECTOR_URL || ''
+    if (!dappOrigin) throw new Error('Missing SEQUENCE_DAPP_ORIGIN (should match the connector UI origin)')
+
+    const storedChain = await keytar.getPassword(SERVICE, `chain:${name}`)
+    const net = resolveNetworkFromChain(getArg(args, '--chain') || storedChain || 'polygon')
+
+    const token = await resolveErc20BySymbol({ chainId: net.chainId, symbol })
+    if (!token) throw new Error(`Unknown token symbol ${symbol} on chain ${net.name} (${net.chainId})`)
+
+    // Delegate to send-erc20 implementation
+    const decimalsNum = Number(token.decimals)
+    const tokenAddress = token.address
+
+    const parseUnits = (s, d) => {
+      const [i, fRaw = ''] = String(s).split('.')
+      const f = (fRaw + '0'.repeat(Number(d))).slice(0, Number(d))
+      return BigInt(i) * 10n ** BigInt(d) + BigInt(f)
+    }
+
+    const value = parseUnits(amount, decimalsNum)
+    const selector = '0xa9059cbb'
+    const pad = (hex, n = 64) => String(hex).replace(/^0x/, '').padStart(n, '0')
+    const data = selector + pad(to) + pad('0x' + value.toString(16))
+
+    const transactions = [{ to: tokenAddress, value: 0n, data }]
+
+    const { walletAddress, txHash, dryRun } = await runDappClientTx({
+      name,
+      walletName: name,
+      chainId: net.chainId,
+      walletUrl,
+      projectAccessKey,
+      dappOrigin,
+      transactions,
+      broadcast,
+      preferNativeFee: true
+    })
+
+    if (dryRun) return
+
+    const txBase = explorerTxBase(net)
+    console.log(JSON.stringify({ ok: true, walletName: name, walletAddress, chain: net.name, chainId: net.chainId, symbol: token.symbol, tokenAddress, decimals: decimalsNum, to, amount, txHash, explorerUrl: txBase ? (txBase + txHash) : undefined }, null, 2))
+    return
   }
 
   if (cmd === 'send-erc20') {
