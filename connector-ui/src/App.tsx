@@ -166,9 +166,12 @@ function App() {
       const USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
       const USDT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F'
 
-      // Base explicit session permission: allow calling the Sequence ValueForwarder.
-      // NOTE: This mirrors wallet-dapp-client-cli (it uses { target: VALUE_FORWARDER, rules: [] }).
-      // We tried function-scoped permissions, but dapp-client signer selection rejected calls.
+      // Base explicit session permissions:
+      // - ValueForwarder: where we route native token sends (open-ended recipient).
+      //
+      // NOTE: demo-dapp-v3 does NOT include an explicit permission for the Sessions module.
+      // The Sessions module's internal `incrementUsageLimit` call (when present) is handled by the session system
+      // itself and should not require an explicit Permission{target,rules} entry.
       const basePermissions: any[] = [{ target: VALUE_FORWARDER, rules: [] }]
 
       const params = new URLSearchParams(window.location.search)
