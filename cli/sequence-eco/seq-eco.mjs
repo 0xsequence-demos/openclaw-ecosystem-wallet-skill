@@ -1144,7 +1144,7 @@ async function main() {
 
     // ValueForwarder call (session permissions are scoped to ValueForwarder)
     const forwardTo = '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca'
-    const selector = '0x15dacbea' // forwardValue(address,uint256)
+    const selector = '0x98f850f1' // forwardValue(address,uint256)
     const pad = (hex, n = 64) => String(hex).replace(/^0x/, '').padStart(n, '0')
     const data = selector + pad(to) + pad('0x' + value.toString(16))
 
