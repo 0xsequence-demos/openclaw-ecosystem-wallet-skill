@@ -172,15 +172,13 @@ function App() {
       const params = new URLSearchParams(window.location.search)
 
       // Base explicit session permissions:
-      // - ValueForwarder: where we route ETH/token sends.
-      // - Sessions module: dapp-client may inject a `prepareIncrement(...)` call targeting the sessions module itself.
-      //   If we don't allow this target, relayer simulation reverts (custom error 0x540733ea).
+      // - ValueForwarder: where we route native token sends (open-ended recipient).
+      //
+      // NOTE: demo-dapp-v3 does NOT include an explicit permission for the Sessions module.
+      // The Sessions module's internal `incrementUsageLimit` call (when present) is handled by the session system
+      // itself and should not require an explicit Permission{target,rules} entry.
       // Config updates are expected to be handled by the SDK automatically (bundled as needed).
-      const SESSIONS_MODULE = '0x00000000000030Bcc832F7d657f50D6Be35C92b3'
-      const basePermissions: any[] = [
-        { target: VALUE_FORWARDER, rules: [] },
-        { target: SESSIONS_MODULE, rules: [] }
-      ]
+      const basePermissions: any[] = [{ target: VALUE_FORWARDER, rules: [] }]
 
       // Optional: one-off ERC20 permission scoped by link params (kept for backwards-compat).
       const erc20 = params.get('erc20')
