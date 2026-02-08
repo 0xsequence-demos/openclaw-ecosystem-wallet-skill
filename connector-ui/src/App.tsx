@@ -5,9 +5,8 @@ import { DappClient, TransportMode, WebStorage, jsonReplacers, Utils, Permission
 import { Hex, Signature } from 'ox'
 import sealedbox from 'tweetnacl-sealedbox-js'
 
-import { dappOrigin, projectAccessKey, walletUrl, relayerUrl, nodesUrl, polygonChainId } from './config'
-
-const INDEXER_ACCESS_KEY = import.meta.env.VITE_POLYGON_INDEXER_ACCESS_KEY as string | undefined
+import { dappOrigin, projectAccessKey, walletUrl, relayerUrl, nodesUrl } from './config'
+import { fetchBalancesAllChains, pickChainBalances, resolveChainId, resolveNetwork } from './indexer'
 
 function b64urlDecode(str: string): Uint8Array {
   const norm = str.replace(/-/g, '+').replace(/_/g, '/')
@@ -78,33 +77,15 @@ type BalanceSummary = {
   }>
 }
 
-async function fetchBalances(walletAddress: string): Promise<BalanceSummary> {
-  if (!INDEXER_ACCESS_KEY) throw new Error('Missing VITE_POLYGON_INDEXER_ACCESS_KEY')
-  const res = await fetch('https://polygon-indexer.sequence.app/rpc/Indexer/GetTokenBalancesSummary', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Access-Key': INDEXER_ACCESS_KEY
-    },
-    body: JSON.stringify({
-      chainID: 'polygon',
-      omitMetadata: false,
-      filter: {
-        contractStatus: 'VERIFIED',
-        accountAddresses: [walletAddress]
-      }
-    })
-  })
-  if (!res.ok) throw new Error(`Indexer error: ${res.status}`)
-  return res.json()
-}
-
 function App() {
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const rid = params.get('rid') || ''
   const walletName = params.get('wallet') || ''
   const pub = params.get('pub') || ''
   const callbackUrl = params.get('callbackUrl') || ''
+
+  const chainId = useMemo(() => resolveChainId(params), [params])
+  const network = useMemo(() => resolveNetwork(chainId), [chainId])
 
   const [error, setError] = useState<string>('')
   const [walletAddress, setWalletAddress] = useState<string>('')
@@ -138,7 +119,7 @@ function App() {
         await dappClient.initialize()
         // Prefetch fee tokens so the actual Connect click can open the popup synchronously.
         try {
-          setFeeTokens(await dappClient.getFeeTokens(polygonChainId))
+          setFeeTokens(await dappClient.getFeeTokens(chainId))
         } catch {
           setFeeTokens(null)
         }
@@ -205,10 +186,10 @@ function App() {
       // Query params:
       // - usdcLimit (e.g. 50)
       // - usdtLimit (e.g. 50)
-      // - polLimit  (e.g. 100)
+      // - nativeLimit (e.g. 1.5)  (back-compat: polLimit)
       const usdcLimit = params.get('usdcLimit')
       const usdtLimit = params.get('usdtLimit')
-      const polLimit = params.get('polLimit')
+      const nativeLimit = params.get('nativeLimit') || params.get('polLimit')
 
       const openTokenPermissions: any[] = []
       if (usdcLimit) {
@@ -256,18 +237,18 @@ function App() {
               })
           : []
 
-      const polValueLimit = polLimit ? BigInt(Math.floor(parseFloat(polLimit) * 1e18)) : 2000000000000000000n
+      const polValueLimit = nativeLimit ? BigInt(Math.floor(parseFloat(nativeLimit) * 1e18)) : 2000000000000000000n
 
       const sessionConfig = {
-        chainId: polygonChainId,
-        // Native spend limit (POL)
+        chainId,
+        // Native spend limit (chain native token)
         valueLimit: polValueLimit,
         deadline: BigInt(Math.floor(Date.now() / 1000) + 60 * 60 * 24),
         permissions: [...basePermissions, ...oneOffErc20Permissions, ...openTokenPermissions, ...nativeFeePermission, ...feePermissions]
       }
 
       // Connect will open the wallet UI (popup).
-      await dappClient.connect(polygonChainId, sessionConfig as any, { includeImplicitSession: true })
+      await dappClient.connect(chainId, sessionConfig as any, { includeImplicitSession: true })
 
       const addr = await dappClient.getWalletAddress()
       if (!addr) throw new Error('Wallet address not available after connect')
@@ -278,7 +259,7 @@ function App() {
 
       const sessions = await storage.getExplicitSessions()
       const explicit = (sessions || []).find(
-        (s: any) => String(s.chainId) === String(polygonChainId) && String(s.walletAddress).toLowerCase() === addr.toLowerCase()
+        (s: any) => String(s.chainId) === String(chainId) && String(s.walletAddress).toLowerCase() === addr.toLowerCase()
       )
       if (!explicit?.pk) throw new Error('Could not locate explicit session pk after connect')
 
@@ -324,7 +305,7 @@ function App() {
         rid,
         walletName,
         walletAddress: addr,
-        chainId: polygonChainId,
+        chainId,
         explicitSession: {
           pk: explicit.pk,
           sessionAddress,
@@ -373,9 +354,12 @@ function App() {
           setCallbackFailed(true)
         }
       }
-
-      if (INDEXER_ACCESS_KEY) {
-        setBalances(await fetchBalances(addr))
+      try {
+        const all = await fetchBalancesAllChains(addr)
+        const picked = pickChainBalances(all, chainId)
+        setBalances(picked)
+      } catch {
+        setBalances(null)
       }
     } catch (e: any) {
       console.error(e)
@@ -413,7 +397,7 @@ function App() {
           <div className='dot' />
           <div>
             <div className='title'>Ecosystem Wallet Link</div>
-            <div className='subtitle'>Polygon · create an explicit session and export to OpenClaw</div>
+            <div className='subtitle'>{network.title} · create an explicit session and export to OpenClaw</div>
           </div>
         </div>
 
@@ -436,7 +420,7 @@ function App() {
               <div className='label'>Wallet address</div>
               <div className='mono'>{walletAddress}</div>
 
-              {INDEXER_ACCESS_KEY && (
+              {balances && (
                 <div className='balances'>
                   {allRows.map(row => (
                     <div className='balanceRow' key={row.key}>

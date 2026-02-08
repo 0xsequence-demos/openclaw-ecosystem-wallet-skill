@@ -9,6 +9,8 @@ import keytar from 'keytar'
 import nacl from 'tweetnacl'
 import sealedbox from 'tweetnacl-sealedbox-js'
 
+import { Network } from '@0xsequence/wallet-primitives'
+
 const SERVICE = 'openclaw.sequence-ecosystem'
 
 function installFetchLogger() {
@@ -79,9 +81,10 @@ function usage() {
   seq-eco.mjs wallet-remove --name <walletName> --yes
 
   seq-eco.mjs address --name <walletName>
-  seq-eco.mjs balances --name <walletName> [--chain polygon]
-  seq-eco.mjs send-pol --name <walletName> --to <address> --amount <pol> [--broadcast]
-  seq-eco.mjs send-usdc --name <walletName> --to <address> --amount <usdc> [--broadcast]
+  seq-eco.mjs balances --name <walletName> [--chain <networkName|chainId>]
+  seq-eco.mjs send-native --name <walletName> --to <address> --amount <native> [--broadcast]
+  seq-eco.mjs send-erc20 --name <walletName> --token <address> --decimals <n> --to <address> --amount <tokenAmount> [--broadcast]
+  (aliases: send-pol → send-native)
   seq-eco.mjs config-update --name <walletName> [--broadcast]
 
 Env:
@@ -174,19 +177,32 @@ function getArg(args, k) {
 }
 
 function normalizeChain(raw) {
+  // Back-compat helper for older links/flags.
   const c = String(raw || '').toLowerCase()
   if (!c) return 'polygon'
   if (c === 'matic') return 'polygon'
   return c
 }
 
-function indexerUrl(chain) {
-  // Polygon only for now
-  return process.env.SEQUENCE_INDEXER_URL || 'https://polygon-indexer.sequence.app/rpc/Indexer/GetTokenBalancesSummary'
+function resolveNetworkFromChain(raw) {
+  const c = normalizeChain(raw || 'polygon')
+
+  // Support either a network name ("polygon", "base", "arbitrum") or a numeric chainId.
+  const asNum = Number(c)
+  const net = Number.isFinite(asNum) && asNum > 0 ? Network.getNetworkFromChainId(asNum) : Network.getNetworkFromName(c)
+  if (!net) throw new Error(`Unsupported chain/network: ${raw}`)
+  return net
 }
 
-function explorerBase(chain) {
-  return 'https://polygonscan.com/tx/'
+function indexerUrl() {
+  // Chain-agnostic Sequence indexer; response includes entries per chain.
+  return process.env.SEQUENCE_INDEXER_URL || 'https://indexer.sequence.app/rpc/Indexer/GetTokenBalancesSummary'
+}
+
+function explorerTxBase(net) {
+  const base = String(net?.blockExplorer?.url || '').replace(/\/+$/, '')
+  if (!base) return null
+  return `${base}/tx/`
 }
 
 function isValidB64UrlString(s) {
@@ -413,7 +429,14 @@ async function ingestSessionFromCiphertext({ name, rid, ciphertext }) {
   const implicit = payload.implicit
 
   if (!walletAddress || typeof walletAddress !== 'string') throw new Error('Missing walletAddress in payload')
-  if (chainId !== 137) throw new Error(`Unexpected chainId ${chainId} (expected 137 for Polygon)`) 
+  if (!chainId || typeof chainId !== 'number') throw new Error('Missing chainId in payload')
+
+  // Ensure the chain in the request matches the chainId returned by the connector.
+  // (We store network name in the request; connector payload includes numeric chainId.)
+  const net = resolveNetworkFromChain(chain)
+  if (Number(net.chainId) !== Number(chainId)) {
+    throw new Error(`Chain mismatch: request chain=${chain} (chainId=${net.chainId}) but payload chainId=${chainId}`)
+  }
   if (!explicitSession || typeof explicitSession !== 'object') throw new Error('Missing explicitSession in payload')
   if (!explicitSession.pk || typeof explicitSession.pk !== 'string') throw new Error('Missing explicitSession.pk in payload')
   if (!implicit?.pk || !implicit?.attestation || !implicit?.identitySignature) throw new Error('Missing implicit session in payload')
@@ -531,10 +554,11 @@ async function main() {
 
     // Open-ended per-token limits (no fixed recipient)
     // These map to connector UI query params.
-    const polLimit = getArg(args, '--pol-limit')
+    const nativeLimit = getArg(args, '--native-limit') || getArg(args, '--pol-limit')
     const usdcLimit = getArg(args, '--usdc-limit')
     const usdtLimit = getArg(args, '--usdt-limit')
-    if (polLimit) url.searchParams.set('polLimit', polLimit)
+    // Connector supports nativeLimit (back-compat: polLimit)
+    if (nativeLimit) url.searchParams.set('nativeLimit', nativeLimit)
     if (usdcLimit) url.searchParams.set('usdcLimit', usdcLimit)
     if (usdtLimit) url.searchParams.set('usdtLimit', usdtLimit)
 
@@ -621,14 +645,18 @@ async function main() {
     const idxKey = process.env.SEQUENCE_INDEXER_ACCESS_KEY
     if (!idxKey) throw new Error('Missing SEQUENCE_INDEXER_ACCESS_KEY env var')
 
-    const res = await fetch(indexerUrl('polygon'), {
+    const chainArg = getArg(args, '--chain')
+    const storedChain = await keytar.getPassword(SERVICE, `chain:${name}`)
+    const net = resolveNetworkFromChain(chainArg || storedChain || 'polygon')
+
+    const res = await fetch(indexerUrl(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Access-Key': idxKey
       },
       body: JSON.stringify({
-        chainID: 'polygon',
+        // NOTE: omit chainID so the indexer returns results for all supported chains.
         omitMetadata: false,
         filter: { contractStatus: 'VERIFIED', accountAddresses: [walletAddress] }
       })
@@ -639,21 +667,42 @@ async function main() {
       throw new Error(`Indexer error: ${res.status} ${text}`)
     }
 
-    const json = await res.json()
-    const native = (json.nativeBalances || []).map((b) => ({
+    const all = await res.json()
+
+    // Pick the chain entry from the multi-chain response (there is one entry per chainId).
+    const chainEntry =
+      all?.chains?.[String(net.chainId)] ||
+      all?.byChainId?.[String(net.chainId)] ||
+      (Array.isArray(all?.chains) ? all.chains.find((x) => String(x?.chainId || x?.chainID) === String(net.chainId)) : null) ||
+      (all?.balances || all?.nativeBalances ? all : null)
+
+    if (!chainEntry) {
+      console.log(JSON.stringify({ ok: true, walletName: name, walletAddress, chainId: net.chainId, chain: net.name, balances: [] }, null, 2))
+      return
+    }
+
+    const nativeDecimals = net?.nativeCurrency?.decimals ?? 18
+
+    const native = (chainEntry.nativeBalances || []).map((b) => ({
       type: 'native',
-      symbol: b.symbol || b.name || 'NATIVE',
-      balance: formatUnits(b.balance || '0', 18)
+      symbol: b.symbol || b.name || net?.nativeCurrency?.symbol || 'NATIVE',
+      balance: formatUnits(b.balance || '0', nativeDecimals)
     }))
 
-    const erc20 = (json.balances || []).map((b) => ({
+    const erc20 = (chainEntry.balances || []).map((b) => ({
       type: 'erc20',
       symbol: b.contractInfo?.symbol || 'ERC20',
       contractAddress: b.contractAddress,
       balance: formatUnits(b.balance || '0', b.contractInfo?.decimals ?? 0)
     }))
 
-    console.log(JSON.stringify({ ok: true, walletName: name, walletAddress, balances: [...native, ...erc20] }, null, 2))
+    console.log(
+      JSON.stringify(
+        { ok: true, walletName: name, walletAddress, chainId: net.chainId, chain: net.name, balances: [...native, ...erc20] },
+        null,
+        2
+      )
+    )
     return
   }
 
@@ -679,6 +728,9 @@ async function main() {
     const dappOrigin = process.env.SEQUENCE_DAPP_ORIGIN || process.env.SEQUENCE_ECOSYSTEM_CONNECTOR_URL || ''
     if (!dappOrigin) throw new Error('Missing SEQUENCE_DAPP_ORIGIN (should match the connector UI origin)')
 
+    const storedChain = await keytar.getPassword(SERVICE, `chain:${name}`)
+    const net = resolveNetworkFromChain(getArg(args, '--chain') || storedChain || 'polygon')
+
     const { DappClient, TransportMode, jsonRevivers } = await import('@0xsequence/dapp-client')
 
     const explicitSession = JSON.parse(explicitRaw, jsonRevivers)
@@ -691,7 +743,7 @@ async function main() {
         this.explicitSessions = [{
           pk: explicitSession.pk,
           walletAddress: explicitSession.walletAddress || walletAddress,
-          chainId: 137,
+          chainId: net.chainId,
           loginMethod: explicitSession.loginMethod,
           userEmail: explicitSession.userEmail,
           guard: explicitSession.guard
@@ -753,7 +805,7 @@ async function main() {
         walletAddress: explicitSession.walletAddress || walletAddress,
         attestation: implicitAttestation,
         identitySignature: implicitIdentitySignature,
-        chainId: 137,
+        chainId: net.chainId,
         loginMethod: meta.loginMethod,
         userEmail: meta.userEmail,
         guard: meta.guard
@@ -949,6 +1001,10 @@ async function main() {
     const dappOrigin = process.env.SEQUENCE_DAPP_ORIGIN || process.env.SEQUENCE_ECOSYSTEM_CONNECTOR_URL || ''
     if (!dappOrigin) throw new Error('Missing SEQUENCE_DAPP_ORIGIN (should match the connector UI origin)')
 
+    const storedChain = await keytar.getPassword(SERVICE, `chain:${name}`)
+    const net = resolveNetworkFromChain(getArg(args, '--chain') || storedChain || 'polygon')
+    if (net.name !== 'polygon') throw new Error(`send-usdc is currently only supported on polygon (got ${net.name}). Use send-erc20 instead.`)
+
     // Polygon USDC (native): 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359
     const USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
     const decimals = 6n
@@ -971,7 +1027,7 @@ async function main() {
     const { walletAddress, txHash, dryRun } = await runDappClientTx({
       name,
       walletName: name,
-      chainId: 137,
+      chainId: net.chainId,
       walletUrl,
       projectAccessKey,
       dappOrigin,
@@ -984,7 +1040,7 @@ async function main() {
 
     console.log(
       JSON.stringify(
-        { ok: true, walletName: name, walletAddress, token: 'USDC', tokenAddress: USDC, to, amount, txHash, explorerUrl: `${explorerBase('polygon')}${txHash}` },
+        { ok: true, walletName: name, walletAddress, token: 'USDC', tokenAddress: USDC, to, amount, txHash, explorerUrl: `${(explorerTxBase(net) || '')}${txHash}` },
         null,
         2
       )
@@ -992,7 +1048,7 @@ async function main() {
     return
   }
 
-  if (cmd === 'send-pol') {
+  if (cmd === 'send-native' || cmd === 'send-pol') {
     const to = getArg(args, '--to')
     const amount = getArg(args, '--amount')
     const broadcast = args.includes('--broadcast')
@@ -1014,6 +1070,10 @@ async function main() {
     const walletUrl = process.env.SEQUENCE_ECOSYSTEM_WALLET_URL || DEFAULT_WALLET_URL
     const dappOrigin = process.env.SEQUENCE_DAPP_ORIGIN || process.env.SEQUENCE_ECOSYSTEM_CONNECTOR_URL || ''
     if (!dappOrigin) throw new Error('Missing SEQUENCE_DAPP_ORIGIN (should match the connector UI origin)')
+
+    const storedChain = await keytar.getPassword(SERVICE, `chain:${name}`)
+    const net = resolveNetworkFromChain(getArg(args, '--chain') || storedChain || 'polygon')
+    const chainId = net.chainId
 
     const { DappClient, TransportMode, jsonRevivers } = await import('@0xsequence/dapp-client')
 
@@ -1039,7 +1099,7 @@ async function main() {
         this.explicitSessions = [{
           pk: explicitSession.pk,
           walletAddress: explicitSession.walletAddress || walletAddress,
-          chainId: 137,
+          chainId,
           loginMethod: explicitSession.loginMethod,
           userEmail: explicitSession.userEmail,
           guard: explicitSession.guard
@@ -1104,7 +1164,7 @@ async function main() {
         walletAddress: explicitSession.walletAddress || walletAddress,
         attestation: implicitAttestation,
         identitySignature: implicitIdentitySignature,
-        chainId: 137,
+        chainId,
         loginMethod: meta.loginMethod,
         userEmail: meta.userEmail,
         guard: meta.guard
@@ -1134,13 +1194,14 @@ async function main() {
     await client.initialize()
     if (!client.isInitialized) throw new Error('Client not initialized')
 
-    const parseEther = (s) => {
+    const parseNativeUnits = (s) => {
+      const d = BigInt(net?.nativeCurrency?.decimals ?? 18)
       const [i, fRaw = ''] = String(s).split('.')
-      const f = (fRaw + '0'.repeat(18)).slice(0, 18)
-      return BigInt(i) * 10n ** 18n + BigInt(f)
+      const f = (fRaw + '0'.repeat(Number(d))).slice(0, Number(d))
+      return BigInt(i) * 10n ** d + BigInt(f)
     }
 
-    const value = parseEther(amount)
+    const value = parseNativeUnits(amount)
 
     // ValueForwarder call (session permissions are scoped to ValueForwarder)
     const forwardTo = '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca'
@@ -1158,14 +1219,16 @@ async function main() {
       return
     }
 
-    const feeOptions = await client.getFeeOptions(137, transactions)
+    const feeOptions = await client.getFeeOptions(chainId, transactions)
     const feeOpt =
       (feeOptions || []).find((o) => !o?.token?.contractAddress || o?.token?.contractAddress === '0x0000000000000000000000000000000000000000') ||
       feeOptions?.[0]
 
-    const txHash = await client.sendTransaction(137, transactions, feeOpt)
+    const txHash = await client.sendTransaction(chainId, transactions, feeOpt)
 
-    console.log(JSON.stringify({ ok: true, walletName: name, walletAddress, to, amount, txHash, explorerUrl: `${explorerBase('polygon')}${txHash}` }, null, 2))
+    const txBase = explorerTxBase(net)
+
+    console.log(JSON.stringify({ ok: true, walletName: name, walletAddress, chain: net.name, chainId, nativeSymbol: net?.nativeCurrency?.symbol, to, amount, txHash, explorerUrl: txBase ? `${txBase}${txHash}` : undefined }, null, 2))
     return
   }
 
