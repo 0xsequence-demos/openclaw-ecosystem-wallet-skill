@@ -3,6 +3,7 @@ import keytar from 'keytar'
 import { parseUnits } from 'viem'
 import { TrailsApi, TradeType } from '@0xtrails/api'
 import { Network } from '@0xsequence/wallet-primitives'
+import { resolveErc20BySymbol } from './token-directory.mjs'
 
 const SERVICE = 'openclaw.sequence-ecosystem'
 
@@ -54,7 +55,7 @@ Env:
   SEQUENCE_ECOSYSTEM_WALLET_URL=https://acme-wallet.ecosystem-demo.xyz
   SEQUENCE_DAPP_ORIGIN=https://moltbot-ecosystem-wallet.taylanpince.workers.dev
 
-  # REQUIRED for non-Polygon chains (and recommended always): token address/decimals mapping
+  # Optional override mapping (normally you can rely on 0xsequence/token-directory)
   TRAILS_TOKEN_MAP_JSON='{"137":{"USDC":{"address":"0x...","decimals":6},"USDT":{"address":"0x...","decimals":6}}}'
 
 Notes:
@@ -86,35 +87,38 @@ function explorerTxBase(net) {
 }
 
 function loadTokenMap() {
-  // Chain-agnostic Trails swaps require correct token addresses per chain.
-  // Provide a mapping via env to avoid hardcoding Polygon-only addresses.
-  //
+  // Optional override mapping.
   // Format:
   // TRAILS_TOKEN_MAP_JSON='{"137":{"USDC":{"address":"0x...","decimals":6},"USDT":{...}}}'
   const raw = process.env.TRAILS_TOKEN_MAP_JSON || ''
   if (!raw) return {}
   try {
     return JSON.parse(raw)
-  } catch (e) {
+  } catch {
     throw new Error('Invalid TRAILS_TOKEN_MAP_JSON (must be valid JSON)')
   }
 }
 
-function getTokenConfig({ tokenMap, chainId, symbol, nativeSymbol }) {
-  const sym = String(symbol || '').toUpperCase()
+async function getTokenConfig({ tokenMap, chainId, symbol, nativeSymbol }) {
+  const sym = String(symbol || '').toUpperCase().trim()
 
   if (sym === 'NATIVE' || sym === nativeSymbol.toUpperCase() || sym === 'POL') {
     return { symbol: nativeSymbol.toUpperCase(), address: '0x0000000000000000000000000000000000000000', decimals: 18 }
   }
 
+  // 1) explicit env override
   const entry = tokenMap?.[String(chainId)]?.[sym]
-  if (!entry?.address || entry.decimals == null) {
-    throw new Error(
-      `Missing token mapping for ${sym} on chainId=${chainId}. Set TRAILS_TOKEN_MAP_JSON with addresses/decimals for this chain.`
-    )
+  if (entry?.address && entry.decimals != null) {
+    return { symbol: sym, address: entry.address, decimals: Number(entry.decimals) }
   }
 
-  return { symbol: sym, address: entry.address, decimals: Number(entry.decimals) }
+  // 2) Token Directory fallback (validated per chain)
+  const td = await resolveErc20BySymbol({ chainId, symbol: sym })
+  if (!td?.address || td.decimals == null) {
+    throw new Error(`Unknown token ${sym} on chainId=${chainId} (no override + not found in token-directory)`) 
+  }
+
+  return { symbol: sym, address: td.address, decimals: Number(td.decimals) }
 }
 
 async function createDappClient({ walletName, chainId }) {
@@ -272,8 +276,8 @@ async function main() {
   const tokenMap = loadTokenMap()
   const nativeSymbol = net?.nativeCurrency?.symbol || 'NATIVE'
 
-  const fromCfg = getTokenConfig({ tokenMap, chainId, symbol: from, nativeSymbol })
-  const toCfg = getTokenConfig({ tokenMap, chainId, symbol: toSym, nativeSymbol })
+  const fromCfg = await getTokenConfig({ tokenMap, chainId, symbol: from, nativeSymbol })
+  const toCfg = await getTokenConfig({ tokenMap, chainId, symbol: toSym, nativeSymbol })
 
   if (fromCfg.address.toLowerCase() === toCfg.address.toLowerCase()) throw new Error('from and to token must be different')
 
