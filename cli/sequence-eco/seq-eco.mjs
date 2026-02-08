@@ -988,6 +988,66 @@ async function main() {
     return { walletAddress, txHash }
   }
 
+  if (cmd === 'send-erc20') {
+    const token = getArg(args, '--token')
+    const decimalsRaw = getArg(args, '--decimals')
+    const to = getArg(args, '--to')
+    const amount = getArg(args, '--amount')
+    const broadcast = args.includes('--broadcast')
+
+    if (!token || !decimalsRaw || !to || !amount) {
+      throw new Error('Missing --token, --decimals, --to and/or --amount')
+    }
+
+    const decimalsNum = Number(decimalsRaw)
+    if (!Number.isFinite(decimalsNum) || decimalsNum < 0 || decimalsNum > 255) {
+      throw new Error('Invalid --decimals ' + decimalsRaw)
+    }
+
+    const projectAccessKey = process.env.SEQUENCE_PROJECT_ACCESS_KEY
+    if (!projectAccessKey) throw new Error('Missing SEQUENCE_PROJECT_ACCESS_KEY env var')
+
+    const walletUrl = process.env.SEQUENCE_ECOSYSTEM_WALLET_URL || DEFAULT_WALLET_URL
+    const dappOrigin = process.env.SEQUENCE_DAPP_ORIGIN || process.env.SEQUENCE_ECOSYSTEM_CONNECTOR_URL || ''
+    if (!dappOrigin) throw new Error('Missing SEQUENCE_DAPP_ORIGIN (should match the connector UI origin)')
+
+    const storedChain = await keytar.getPassword(SERVICE, `chain:${name}`)
+    const net = resolveNetworkFromChain(getArg(args, '--chain') || storedChain || 'polygon')
+
+    const parseUnits = (s, d) => {
+      const [i, fRaw = ''] = String(s).split('.')
+      const f = (fRaw + '0'.repeat(Number(d))).slice(0, Number(d))
+      return BigInt(i) * 10n ** BigInt(d) + BigInt(f)
+    }
+
+    const value = parseUnits(amount, decimalsNum)
+
+    // transfer(address to, uint256 value)
+    const selector = '0xa9059cbb'
+    const pad = (hex, n = 64) => String(hex).replace(/^0x/, '').padStart(n, '0')
+    const data = selector + pad(to) + pad('0x' + value.toString(16))
+
+    const transactions = [{ to: token, value: 0n, data }]
+
+    const { walletAddress, txHash, dryRun } = await runDappClientTx({
+      name,
+      walletName: name,
+      chainId: net.chainId,
+      walletUrl,
+      projectAccessKey,
+      dappOrigin,
+      transactions,
+      broadcast,
+      preferNativeFee: true
+    })
+
+    if (dryRun) return
+
+    const txBase = explorerTxBase(net)
+    console.log(JSON.stringify({ ok: true, walletName: name, walletAddress, chain: net.name, chainId: net.chainId, token, decimals: decimalsNum, to, amount, txHash, explorerUrl: txBase ? (txBase + txHash) : undefined }, null, 2))
+    return
+  }
+
   if (cmd === 'send-usdc') {
     const to = getArg(args, '--to')
     const amount = getArg(args, '--amount')
