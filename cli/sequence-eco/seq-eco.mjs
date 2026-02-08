@@ -996,13 +996,44 @@ async function main() {
       return { walletAddress, dryRun: true }
     }
 
-    const feeOptions = await client.getFeeOptions(chainId, transactions)
-    const feeOpt = preferNativeFee
-      ? (feeOptions || []).find((o) => !o?.token?.contractAddress) || feeOptions?.[0]
-      : feeOptions?.[0]
+    let feeOpt
+    try {
+      const feeOptions = await client.getFeeOptions(chainId, transactions)
+      feeOpt = preferNativeFee
+        ? (feeOptions || []).find((o) => !o?.token?.contractAddress) || feeOptions?.[0]
+        : feeOptions?.[0]
+    } catch (e) {
+      // Workaround: in some relayer scenarios (notably undeployed wallets), FeeOptions simulation can fail.
+      // We still may be able to dispatch successfully if we provide a fee option explicitly.
+      const enabled = !['0', 'false', 'no'].includes(String(process.env.SEQ_ECO_FEEOPTIONS_WORKAROUND || 'true').toLowerCase())
+      if (!enabled) throw e
+
+      let feeTokens
+      try {
+        feeTokens = await client.getFeeTokens(chainId)
+      } catch {
+        throw e
+      }
+
+      const paymentAddress = feeTokens?.paymentAddress
+      const tokens = Array.isArray(feeTokens?.tokens) ? feeTokens.tokens : []
+      const token = tokens.find((t) => t?.contractAddress) || null
+      if (!paymentAddress || !token) throw e
+
+      const decimals = typeof token.decimals === 'number' ? token.decimals : 6
+      // Default to a small fee payment (0.001 token units).
+      const feeValue = decimals >= 3 ? 10 ** (decimals - 3) : 1
+
+      feeOpt = {
+        token,
+        to: paymentAddress,
+        value: String(feeValue),
+        gasLimit: 0
+      }
+    }
 
     const txHash = await client.sendTransaction(chainId, transactions, feeOpt)
-    return { walletAddress, txHash }
+    return { walletAddress, txHash, feeOptionUsed: feeOpt }
   }
 
   if (cmd === 'send-token') {
