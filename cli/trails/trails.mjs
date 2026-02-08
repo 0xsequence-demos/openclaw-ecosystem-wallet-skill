@@ -2,6 +2,7 @@
 import keytar from 'keytar'
 import { parseUnits } from 'viem'
 import { TrailsApi, TradeType } from '@0xtrails/api'
+import { Network } from '@0xsequence/wallet-primitives'
 
 const SERVICE = 'openclaw.sequence-ecosystem'
 
@@ -39,7 +40,12 @@ function installFetchLogger() {
 
 function usage() {
   console.log(`Usage:
-  trails swap --name <walletName> --from USDC --to POL --amount <exactInputAmount> [--chain polygon] [--slippage 0.005] [--broadcast]
+  trails swap --name <walletName> --from <SYMBOL> --to <SYMBOL> --amount <exactInputAmount> [--chain <networkName|chainId>] [--slippage 0.005] [--broadcast]
+
+Where:
+  --from/--to: token symbol for the selected chain.
+    - Use NATIVE for the chain native token (aliases: POL).
+    - Examples: USDC, USDT, WETH, NATIVE
 
 Env:
   TRAILS_API_KEY=...   (defaults to SEQUENCE_PROJECT_ACCESS_KEY)
@@ -47,6 +53,9 @@ Env:
   SEQUENCE_PROJECT_ACCESS_KEY=... (fallback api key)
   SEQUENCE_ECOSYSTEM_WALLET_URL=https://acme-wallet.ecosystem-demo.xyz
   SEQUENCE_DAPP_ORIGIN=https://moltbot-ecosystem-wallet.taylanpince.workers.dev
+
+  # REQUIRED for non-Polygon chains (and recommended always): token address/decimals mapping
+  TRAILS_TOKEN_MAP_JSON='{"137":{"USDC":{"address":"0x...","decimals":6},"USDT":{"address":"0x...","decimals":6}}}'
 
 Notes:
   - Exact-input semantics only.
@@ -60,15 +69,52 @@ function getArg(args, name) {
   return args[i + 1] ?? null
 }
 
-function normalizeChain(c) {
-  const v = (c || 'polygon').toLowerCase()
-  if (v !== 'polygon') throw new Error(`Only polygon supported right now (got: ${c})`)
-  return v
+function resolveNetwork(raw) {
+  const v = String(raw || 'polygon').toLowerCase()
+  if (v === 'matic') return Network.getNetworkFromName('polygon')
+
+  const asNum = Number(v)
+  const net = Number.isFinite(asNum) && asNum > 0 ? Network.getNetworkFromChainId(asNum) : Network.getNetworkFromName(v)
+  if (!net) throw new Error(`Unsupported chain/network: ${raw}`)
+  return net
 }
 
-function explorerBase(chain) {
-  if (chain === 'polygon') return 'https://polygonscan.com/tx/'
-  throw new Error(`Unknown chain: ${chain}`)
+function explorerTxBase(net) {
+  const base = String(net?.blockExplorer?.url || '').replace(/\/+$/, '')
+  if (!base) return null
+  return `${base}/tx/`
+}
+
+function loadTokenMap() {
+  // Chain-agnostic Trails swaps require correct token addresses per chain.
+  // Provide a mapping via env to avoid hardcoding Polygon-only addresses.
+  //
+  // Format:
+  // TRAILS_TOKEN_MAP_JSON='{"137":{"USDC":{"address":"0x...","decimals":6},"USDT":{...}}}'
+  const raw = process.env.TRAILS_TOKEN_MAP_JSON || ''
+  if (!raw) return {}
+  try {
+    return JSON.parse(raw)
+  } catch (e) {
+    throw new Error('Invalid TRAILS_TOKEN_MAP_JSON (must be valid JSON)')
+  }
+}
+
+function getTokenConfig({ tokenMap, chainId, symbol, nativeSymbol }) {
+  const sym = String(symbol || '').toUpperCase()
+
+  if (sym === 'NATIVE' || sym === nativeSymbol.toUpperCase() || sym === 'POL') {
+    return { symbol: nativeSymbol.toUpperCase(), address: '0x0000000000000000000000000000000000000000', decimals: 18 }
+  }
+
+  const entry = tokenMap?.[String(chainId)]?.[sym]
+  if (!entry?.address || entry.decimals == null) {
+    throw new Error(
+      `Missing token mapping for ${sym} on chainId=${chainId}. Set TRAILS_TOKEN_MAP_JSON with addresses/decimals for this chain.`
+    )
+  }
+
+  return { symbol: sym, address: entry.address, decimals: Number(entry.decimals) }
 }
 
 async function createDappClient({ walletName, chainId }) {
@@ -202,14 +248,14 @@ async function main() {
   const from = (getArg(args, '--from') || '').toUpperCase()
   const toSym = (getArg(args, '--to') || '').toUpperCase()
   const amount = getArg(args, '--amount')
-  const chain = normalizeChain(getArg(args, '--chain') || 'polygon')
+  const net = resolveNetwork(getArg(args, '--chain') || (await keytar.getPassword(SERVICE, `chain:${name}`)) || 'polygon')
   const slippage = Number(getArg(args, '--slippage') || '0.005')
   const broadcast = args.includes('--broadcast')
 
   if (!name) throw new Error('Missing --name')
   if (!amount) throw new Error('Missing --amount')
-  if (!['USDC', 'USDT'].includes(from)) throw new Error('Only --from USDC or USDT supported for now')
-  if (!['POL', 'USDT', 'USDC'].includes(toSym)) throw new Error('Only --to POL, USDT, or USDC supported for now')
+  // Token availability depends on chain; configure addresses via TRAILS_TOKEN_MAP_JSON.
+  // We keep the interface symbol-based and resolve to addresses per chain.
   if (from === toSym) throw new Error('from and to token must be different')
   if (!Number.isFinite(slippage) || slippage <= 0 || slippage >= 0.5) throw new Error('Invalid --slippage')
 
@@ -222,22 +268,21 @@ async function main() {
     hostname: process.env.TRAILS_API_HOSTNAME
   })
 
-  const chainId = 137
-  const USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
-  const USDT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F'
-  const NATIVE = '0x0000000000000000000000000000000000000000'
+  const chainId = net.chainId
+  const tokenMap = loadTokenMap()
+  const nativeSymbol = net?.nativeCurrency?.symbol || 'NATIVE'
+
+  const fromCfg = getTokenConfig({ tokenMap, chainId, symbol: from, nativeSymbol })
+  const toCfg = getTokenConfig({ tokenMap, chainId, symbol: toSym, nativeSymbol })
+
+  if (fromCfg.address.toLowerCase() === toCfg.address.toLowerCase()) throw new Error('from and to token must be different')
 
   const { client, walletAddress } = await createDappClient({ walletName: name, chainId })
 
-  const originTokenAmount = parseUnits(amount, 6).toString()
+  const originTokenAmount = parseUnits(amount, fromCfg.decimals).toString()
 
-  const originTokenAddress = from === 'USDC' ? USDC : USDT
-  const destinationTokenAddress =
-    toSym === 'POL'
-      ? NATIVE
-      : toSym === 'USDT'
-        ? USDT
-        : USDC
+  const originTokenAddress = fromCfg.address
+  const destinationTokenAddress = toCfg.address
 
   const quoteReq = {
     ownerAddress: walletAddress,
@@ -283,7 +328,7 @@ async function main() {
   }
 
   // Send the deposit tx via Sequence session.
-  // Prefer native POL fee option when available.
+  // Prefer native fee option when available.
   const feeOptions = await client.getFeeOptions(chainId, depositTransactions)
   const feeOpt = (feeOptions || []).find((o) => !o?.token?.contractAddress) || feeOptions?.[0]
   const depositTxHash = await client.sendTransaction(chainId, depositTransactions, feeOpt)
@@ -301,7 +346,7 @@ async function main() {
     walletAddress,
     intentId,
     depositTxHash,
-    depositExplorerUrl: `${explorerBase(chain)}${depositTxHash}`,
+    depositExplorerUrl: (() => { const b = explorerTxBase(net); return b ? `${b}${depositTxHash}` : undefined })(),
     executeStatus: execRes?.intentStatus,
     receipt
   }, bigintReplacer, 2))
