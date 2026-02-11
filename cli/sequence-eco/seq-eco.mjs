@@ -1489,7 +1489,10 @@ async function main() {
               tokenAddress: o?.token?.contractAddress ?? null,
               // relay returns native token with null contractAddress in some cases
               maxFee: o?.maxFee,
-              value: o?.value
+              value: o?.value,
+              // include minimal diagnostics to confirm we actually got relayer options
+              quote: o?.quote ?? null,
+              fee: o?.fee ?? null
             }))
           },
           null,
