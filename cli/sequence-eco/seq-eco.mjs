@@ -723,11 +723,37 @@ async function main() {
 
     const nativeBalances = Array.isArray(nbForChain?.results) ? nbForChain.results : []
 
-    const native = nativeBalances.map((b) => ({
+    let native = nativeBalances.map((b) => ({
       type: 'native',
       symbol: b.symbol || b.name || net?.nativeCurrency?.symbol || 'NATIVE',
       balance: formatUnits(b.balance || '0', nativeDecimals)
     }))
+
+    // Fallback: indexer gateway doesn't always return testnet native balances (e.g. Amoy).
+    // When missing, query RPC directly.
+    if (native.length === 0) {
+      try {
+        const rpcRes = await fetch(net.rpcUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: [walletAddress, 'latest'] })
+        })
+        if (rpcRes.ok) {
+          const rpcJson = await rpcRes.json()
+          const hex = rpcJson?.result
+          if (typeof hex === 'string' && hex.startsWith('0x')) {
+            const wei = BigInt(hex)
+            native = [
+              {
+                type: 'native',
+                symbol: net?.nativeCurrency?.symbol || 'NATIVE',
+                balance: formatUnits(wei, nativeDecimals)
+              }
+            ]
+          }
+        }
+      } catch {}
+    }
 
     const balancesForChain = Array.isArray(chainEntry.balances)
       ? chainEntry.balances.find((x) => String(x?.chainId || x?.chainID) === String(net.chainId))
