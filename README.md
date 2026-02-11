@@ -15,7 +15,7 @@ This repo contains:
 ## Status
 
 - Linking + ingest works.
-- Headless send support is still being finalized upstream in `sequence.js`.
+- Headless send support works for at least native sends on Amoy (tested) and is still being finalized upstream in `sequence.js`.
 
 ## Setup
 
@@ -52,8 +52,13 @@ node seq-eco.mjs --help
 
 This repo uses `.env` files locally. **Do not commit secrets.**
 
-- Copy `.env.example` → `.env` where needed and fill in values.
-- All `*.env` files are gitignored (except `.env.example`).
+- Connector UI: copy `connector-ui/.env.example` → `connector-ui/.env`
+- CLI: copy `cli/sequence-eco/.env.local.example` → `cli/sequence-eco/.env.local`
+  - `SEQUENCE_INDEXER_ACCESS_KEY` (used for indexer calls)
+  - `SEQUENCE_INDEXER_URL` (defaults to IndexerGateway)
+  - `SEQUENCE_PROJECT_ACCESS_KEY` (Sequence project access key)
+
+All `*.env*` files are gitignored except `*.example` files.
 
 ## Notes
 

@@ -87,7 +87,7 @@ function usage() {
 
   seq-eco.mjs address --name <walletName>
   seq-eco.mjs balances --name <walletName> [--chain <networkName|chainId>]
-  seq-eco.mjs send-native --name <walletName> --to <address> --amount <native> [--broadcast]
+  seq-eco.mjs send-native --name <walletName> --to <address> --amount <native> [--broadcast] [--direct]
   seq-eco.mjs send-erc20 --name <walletName> --token <address> --decimals <n> --to <address> --amount <tokenAmount> [--broadcast]
   seq-eco.mjs send-token --name <walletName> --symbol <SYMBOL> --to <address> --amount <tokenAmount> [--broadcast]
   (aliases: send-pol → send-native)
@@ -1454,7 +1454,9 @@ async function main() {
 
     const value = parseNativeUnits(amount)
 
-    // ValueForwarder call (session permissions are scoped to ValueForwarder)
+    const useDirectNative = args.includes('--direct') || ['1', 'true', 'yes'].includes(String(process.env.SEQ_ECO_NATIVE_DIRECT || '').toLowerCase())
+
+    // Preferred: ValueForwarder call (session permissions are scoped to ValueForwarder)
     const forwardTo = '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca'
     const selector = '0x98f850f1' // forwardValue(address,uint256)
     const pad = (hex, n = 64) => String(hex).replace(/^0x/, '').padStart(n, '0')
@@ -1462,7 +1464,7 @@ async function main() {
 
     // IMPORTANT: ValueForwarder expects the forwarded amount to be provided as msg.value.
     // We also include the amount in calldata for forwardValue(address,uint256).
-    const transactions = [{ to: forwardTo, value, data }]
+    const transactions = useDirectNative ? [{ to, value, data: '0x' }] : [{ to: forwardTo, value, data }]
 
     if (!broadcast) {
       const bigintReplacer = (_k, v) => (typeof v === 'bigint' ? v.toString() : v)
