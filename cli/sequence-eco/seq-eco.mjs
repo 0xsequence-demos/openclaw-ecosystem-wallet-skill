@@ -638,10 +638,23 @@ async function main() {
   }
 
   if (cmd === 'ingest-session') {
-    const ciphertext = getArg(args, '--ciphertext')
+    let ciphertext = getArg(args, '--ciphertext')
     const rid = getArg(args, '--rid')
     if (!rid) throw new Error('Missing --rid')
-    if (!ciphertext) throw new Error('Missing --ciphertext')
+
+    // Allow passing ciphertext via stdin to avoid shell arg limits.
+    if (!ciphertext || ciphertext === '-') {
+      const stdin = await new Promise((resolve, reject) => {
+        let data = ''
+        process.stdin.setEncoding('utf8')
+        process.stdin.on('data', (chunk) => (data += chunk))
+        process.stdin.on('end', () => resolve(data))
+        process.stdin.on('error', reject)
+      })
+      ciphertext = String(stdin).trim()
+    }
+
+    if (!ciphertext) throw new Error('Missing --ciphertext (or pass --ciphertext - and pipe it via stdin)')
 
     const result = await ingestSessionFromCiphertext({ name, rid, ciphertext })
     console.log(JSON.stringify({ ok: true, ...result }, null, 2))
