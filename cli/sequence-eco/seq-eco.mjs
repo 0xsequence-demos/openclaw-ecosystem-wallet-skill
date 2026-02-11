@@ -1473,6 +1473,31 @@ async function main() {
     }
 
     const feeOptions = await client.getFeeOptions(chainId, transactions)
+
+    const debugFee = ['1', 'true', 'yes'].includes(String(process.env.SEQ_ECO_DEBUG_FEE_OPTIONS || '').toLowerCase())
+    if (debugFee) {
+      console.log(
+        JSON.stringify(
+          {
+            ok: true,
+            walletName: name,
+            chain: net.name,
+            chainId,
+            feeOptionsCount: Array.isArray(feeOptions) ? feeOptions.length : 0,
+            feeOptions: (feeOptions || []).map((o) => ({
+              tokenSymbol: o?.token?.symbol,
+              tokenAddress: o?.token?.contractAddress ?? null,
+              // relay returns native token with null contractAddress in some cases
+              maxFee: o?.maxFee,
+              value: o?.value
+            }))
+          },
+          null,
+          2
+        )
+      )
+    }
+
     const feeOpt =
       (feeOptions || []).find((o) => !o?.token?.contractAddress || o?.token?.contractAddress === '0x0000000000000000000000000000000000000000') ||
       feeOptions?.[0]
