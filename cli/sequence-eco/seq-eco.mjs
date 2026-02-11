@@ -5,12 +5,16 @@ import path from 'node:path'
 import http from 'node:http'
 import { spawn } from 'node:child_process'
 
+import { config as dotenvConfig } from 'dotenv'
+
 import keytar from 'keytar'
 import nacl from 'tweetnacl'
 import sealedbox from 'tweetnacl-sealedbox-js'
 
 import { Network } from '@0xsequence/wallet-primitives'
 import { resolveErc20BySymbol } from './token-directory.mjs'
+
+dotenvConfig({ path: path.join(process.cwd(), '.env.local') })
 
 const SERVICE = 'openclaw.sequence-ecosystem'
 
@@ -205,8 +209,8 @@ function resolveNetworkFromChain(raw) {
 }
 
 function indexerUrl() {
-  // Chain-agnostic Sequence indexer; response includes entries per chain.
-  return process.env.SEQUENCE_INDEXER_URL || 'https://indexer.sequence.app/rpc/Indexer/GetTokenBalancesSummary'
+  // Chain-agnostic Sequence indexer gateway; response includes entries per chain.
+  return process.env.SEQUENCE_INDEXER_URL || 'https://indexer.sequence.app/rpc/IndexerGateway/GetTokenBalancesSummary'
 }
 
 function explorerTxBase(net) {
@@ -713,13 +717,23 @@ async function main() {
 
     const nativeDecimals = net?.nativeCurrency?.decimals ?? 18
 
-    const native = (chainEntry.nativeBalances || []).map((b) => ({
+    const nbForChain = Array.isArray(chainEntry.nativeBalances)
+      ? chainEntry.nativeBalances.find((x) => String(x?.chainId || x?.chainID) === String(net.chainId))
+      : null
+
+    const nativeBalances = Array.isArray(nbForChain?.results) ? nbForChain.results : []
+
+    const native = nativeBalances.map((b) => ({
       type: 'native',
       symbol: b.symbol || b.name || net?.nativeCurrency?.symbol || 'NATIVE',
       balance: formatUnits(b.balance || '0', nativeDecimals)
     }))
 
-    const erc20 = (chainEntry.balances || []).map((b) => ({
+    const balancesForChain = Array.isArray(chainEntry.balances)
+      ? chainEntry.balances.find((x) => String(x?.chainId || x?.chainID) === String(net.chainId))
+      : null
+
+    const erc20 = (Array.isArray(balancesForChain?.results) ? balancesForChain.results : []).map((b) => ({
       type: 'erc20',
       symbol: b.contractInfo?.symbol || 'ERC20',
       contractAddress: b.contractAddress,
