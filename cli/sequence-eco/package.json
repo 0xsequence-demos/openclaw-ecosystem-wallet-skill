@@ -3,17 +3,21 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@0xsequence/abi": "3.0.0-beta.15",
-    "@0xsequence/api": "3.0.0-beta.15",
-    "@0xsequence/builder": "3.0.0-beta.15",
-    "@0xsequence/dapp-client": "3.0.0-beta.15",
-    "@0xsequence/relayer": "3.0.0-beta.15",
-    "@0xsequence/wallet-core": "3.0.0-beta.15",
-    "@0xsequence/wallet-primitives": "3.0.0-beta.15",
-    "@0xsequence/wallet-wdk": "3.0.0-beta.15",
+    "@0xsequence/abi": "3.0.0-beta.16",
+    "@0xsequence/api": "3.0.0-beta.16",
+    "@0xsequence/builder": "3.0.0-beta.16",
+    "@0xsequence/dapp-client": "3.0.0-beta.16",
+    "@0xsequence/relayer": "0.0.0-20260214075020",
+    "@0xsequence/wallet-core": "3.0.0-beta.16",
+    "@0xsequence/wallet-primitives": "0.0.0-20260214075020",
+    "@0xsequence/wallet-wdk": "3.0.0-beta.16",
     "dotenv": "^17.2.4",
     "keytar": "^7.9.0",
     "tweetnacl": "^1.0.3",
     "tweetnacl-sealedbox-js": "^1.2.0"
+  },
+  "overrides": {
+    "@0xsequence/relayer": "0.0.0-20260214075020",
+    "@0xsequence/wallet-primitives": "0.0.0-20260214075020"
   }
 }
