@@ -585,6 +585,11 @@ async function main() {
       .filter(Boolean)
     if (tokenLimits.length) url.searchParams.set('tokenLimits', tokenLimits.join(','))
 
+    // IMPORTANT: ensure the session includes fee-payment permissions so relayed txs can select
+    // a fee option (per Sequence docs).
+    const includeFeePerms = !['0', 'false', 'no'].includes(String(process.env.SEQ_ECO_INCLUDE_FEE_OPTION_PERMISSIONS || 'true').toLowerCase())
+    if (includeFeePerms) url.searchParams.set('includeFeeOptionPermissions', 'true')
+
     if (!useWebhook) {
       console.log(JSON.stringify({ ok: true, walletName: name, chain, rid, url: url.toString(), expiresAt, storedState: statePath }, null, 2))
       return
