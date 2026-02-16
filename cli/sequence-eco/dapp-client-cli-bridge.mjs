@@ -36,6 +36,13 @@ export async function syncStateFromKeychain({ walletName, chainId }) {
   const passphrase = requireEnv('DAPP_CLIENT_CLI_PASSPHRASE')
   const statePath = statePathFor(walletName)
 
+  // We derive all meaningful session state from Keychain on each run.
+  // The CLI state file is just a transport for dapp-client-cli; to avoid
+  // passphrase mismatch / stale encrypted state issues, we always recreate it.
+  try {
+    if (fs.existsSync(statePath)) fs.unlinkSync(statePath)
+  } catch {}
+
   const walletAddress = await keytar.getPassword(SERVICE, `wallet:${walletName}`)
   const explicitRaw = await keytar.getPassword(SERVICE, `explicitSession:${walletName}`)
   const implicitPk = await keytar.getPassword(SERVICE, `implicitPk:${walletName}`)
