@@ -101,9 +101,15 @@ export async function syncStateFromKeychain({ walletName, chainId }) {
   const explicitSession = JSON.parse(explicitRaw, jsonRevivers)
 
   await storage.saveExplicitSession({
+    // Persist the FULL explicit session shape so dapp-client-cli can generate
+    // the same calldata bundling as a natively-connected CLI session.
     pk: explicitSession.pk,
+    sessionAddress: explicitSession.sessionAddress,
     walletAddress,
     chainId,
+    config: explicitSession.config,
+
+    // optional metadata (not always present on explicitSession)
     loginMethod: implicitMeta.loginMethod ?? explicitSession.loginMethod,
     userEmail: implicitMeta.userEmail ?? explicitSession.userEmail,
     guard: implicitMeta.guard,
