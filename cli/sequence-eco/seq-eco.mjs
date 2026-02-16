@@ -8,6 +8,8 @@ import { spawn } from 'node:child_process'
 import { config as dotenvConfig } from 'dotenv'
 
 import keytar from 'keytar'
+
+import { sendTransactionViaDappClientCli } from './dapp-client-cli-bridge.mjs'
 import nacl from 'tweetnacl'
 import sealedbox from 'tweetnacl-sealedbox-js'
 
@@ -942,106 +944,7 @@ async function main() {
     preferNativeFee
   }) => {
     const walletAddress = await keytar.getPassword(SERVICE, `wallet:${walletName}`)
-    const explicitRaw = await keytar.getPassword(SERVICE, `explicitSession:${walletName}`)
-    const implicitPkRaw = await keytar.getPassword(SERVICE, `implicitPk:${walletName}`)
-    const implicitAttRaw = await keytar.getPassword(SERVICE, `implicitAttestation:${walletName}`)
-    const implicitSigRaw = await keytar.getPassword(SERVICE, `implicitIdentitySig:${walletName}`)
-    const implicitMetaRaw = await keytar.getPassword(SERVICE, `implicitMeta:${walletName}`)
-
     if (!walletAddress) throw new Error(`Missing wallet address in Keychain: wallet:${walletName}`)
-    if (!explicitRaw) throw new Error(`Missing explicit session in Keychain: explicitSession:${walletName}`)
-
-    const { DappClient, TransportMode, jsonRevivers } = await import('@0xsequence/dapp-client')
-
-    const explicitSession = JSON.parse(explicitRaw, jsonRevivers)
-    if (!explicitSession?.pk) throw new Error('Stored explicit session is missing pk; re-link wallet')
-
-    // Keychain-backed storage modeled after wallet-dapp-client-cli
-    class KeychainSequenceStorage {
-      constructor() {
-        this.pendingRedirect = false
-        this.tempSessionPk = null
-        this.pendingRequest = null
-        this.explicitSessions = [{
-          pk: explicitSession.pk,
-          walletAddress: explicitSession.walletAddress || walletAddress,
-          chainId,
-          loginMethod: explicitSession.loginMethod,
-          userEmail: explicitSession.userEmail,
-          guard: explicitSession.guard
-        }]
-        this.implicitSession = null
-      }
-      async setPendingRedirectRequest(isPending) { this.pendingRedirect = !!isPending }
-      async isRedirectRequestPending() { return !!this.pendingRedirect }
-      async saveTempSessionPk(pk) { this.tempSessionPk = pk }
-      async getAndClearTempSessionPk() { const v = this.tempSessionPk; this.tempSessionPk = null; return v }
-      async savePendingRequest(context) { this.pendingRequest = context }
-      async getAndClearPendingRequest() { const v = this.pendingRequest; this.pendingRequest = null; return v }
-      async peekPendingRequest() { return this.pendingRequest }
-      async saveExplicitSession(sessionData) {
-        this.explicitSessions = [...this.explicitSessions.filter(s => !(s.walletAddress === sessionData.walletAddress && s.pk === sessionData.pk && s.chainId === sessionData.chainId)), sessionData]
-      }
-      async getExplicitSessions() { return [...this.explicitSessions] }
-      async clearExplicitSessions() { this.explicitSessions = [] }
-      async saveImplicitSession(sessionData) { this.implicitSession = sessionData }
-      async getImplicitSession() { return this.implicitSession }
-      async clearImplicitSession() { this.implicitSession = null }
-      async saveSessionlessConnection(sessionData) { this.sessionlessConnection = sessionData }
-      async getSessionlessConnection() { return this.sessionlessConnection ?? null }
-      async clearSessionlessConnection() { this.sessionlessConnection = null }
-      async saveSessionlessConnectionSnapshot(sessionData) { this.sessionlessConnectionSnapshot = sessionData }
-      async getSessionlessConnectionSnapshot() { return this.sessionlessConnectionSnapshot ?? null }
-      async clearSessionlessConnectionSnapshot() { this.sessionlessConnectionSnapshot = null }
-      async clearAllData() {}
-    }
-    class MapSessionStorage {
-      constructor() { this.kv = new Map() }
-      async getItem(k) { return this.kv.has(k) ? this.kv.get(k) : null }
-      async setItem(k, v) { this.kv.set(k, v) }
-      async removeItem(k) { this.kv.delete(k) }
-    }
-
-    const sequenceStorage = new KeychainSequenceStorage()
-    const sequenceSessionStorage = new MapSessionStorage()
-
-    if (implicitPkRaw && implicitAttRaw && implicitSigRaw) {
-      const implicitAttestation = JSON.parse(implicitAttRaw, jsonRevivers)
-      const implicitIdentitySignature = JSON.parse(implicitSigRaw, jsonRevivers)
-      const meta = implicitMetaRaw ? JSON.parse(implicitMetaRaw, jsonRevivers) : {}
-      await sequenceStorage.saveImplicitSession({
-        pk: implicitPkRaw,
-        walletAddress: explicitSession.walletAddress || walletAddress,
-        attestation: implicitAttestation,
-        identitySignature: implicitIdentitySignature,
-        chainId,
-        loginMethod: meta.loginMethod,
-        userEmail: meta.userEmail,
-        guard: meta.guard
-      })
-    }
-
-    if (!globalThis.window) globalThis.window = { fetch: globalThis.fetch }
-    else if (!globalThis.window.fetch) globalThis.window.fetch = globalThis.fetch
-
-    installFetchLogger()
-
-    const keymachineUrl = process.env.SEQUENCE_KEYMACHINE_URL || 'https://keymachine.sequence.app'
-    const nodesUrl = process.env.SEQUENCE_NODES_URL || defaultNodesUrl(projectAccessKey)
-    const relayerUrl = process.env.SEQUENCE_RELAYER_URL || 'https://{network}-relayer.sequence.app'
-
-    const client = new DappClient(walletUrl, dappOrigin, projectAccessKey, {
-      transportMode: TransportMode.REDIRECT,
-      keymachineUrl,
-      nodesUrl,
-      relayerUrl,
-      sequenceStorage,
-      sequenceSessionStorage,
-      canUseIndexedDb: false
-    })
-
-    await client.initialize()
-    if (!client.isInitialized) throw new Error('Client not initialized')
 
     if (!broadcast) {
       const bigintReplacer = (_k, v) => (typeof v === 'bigint' ? v.toString() : v)
@@ -1049,65 +952,19 @@ async function main() {
       return { walletAddress, dryRun: true }
     }
 
-    let feeOpt
-    try {
-      const feeOptions = await client.getFeeOptions(chainId, transactions)
-      feeOpt = preferNativeFee
-        ? (feeOptions || []).find((o) => !o?.token?.contractAddress) || feeOptions?.[0]
-        : feeOptions?.[0]
-    } catch (e) {
-      // Workaround: in some relayer scenarios (notably undeployed wallets), FeeOptions can fail due to
-      // an incorrect relayer feeOptions request shape (wallet/to mismatch) and/or simulation quirks.
-      // Try a "direct" feeOptions call first; if that still fails, fall back to forcing a small fee option.
-      const enabled = !['0', 'false', 'no'].includes(String(process.env.SEQ_ECO_FEEOPTIONS_WORKAROUND || 'true').toLowerCase())
-      if (!enabled) throw e
+    // Route ALL txs through dapp-client-cli so calldata bundling matches the official flow
+    // (esp. for undeployed v3 wallets). This wrapper will:
+    // - sync state from Keychain → encrypted CLI state file
+    // - run `fee-options` to select a viable fee option
+    // - run `send-transaction` with that fee option
+    const res = await sendTransactionViaDappClientCli({ walletName, chainId, transactions })
 
-      // 1) Try to fetch fee options directly from the chain manager's relayer, using the *wallet address*
-      // (not the signedCall.to / guest module address). This avoids the relayer 400 we observed.
-      try {
-        const mgr = client.getChainSessionManager ? client.getChainSessionManager(chainId) : null
-        const direct = await mgr?.relayer?.feeOptions?.(walletAddress, chainId, transactions)
-        const opts = direct?.options
-        if (Array.isArray(opts) && opts.length) {
-          feeOpt = preferNativeFee
-            ? opts.find((o) => !o?.token?.contractAddress) || opts[0]
-            : opts[0]
-        }
-      } catch {
-        // ignore, fall back
-      }
-
-      if (feeOpt) {
-        // got an option without hitting the broken FeeOptions path
-      } else {
-        // 2) Forced fee option: pick a fee token and pay a small amount to paymentAddress.
-        let feeTokens
-        try {
-          feeTokens = await client.getFeeTokens(chainId)
-        } catch {
-          throw e
-        }
-
-        const paymentAddress = feeTokens?.paymentAddress
-        const tokens = Array.isArray(feeTokens?.tokens) ? feeTokens.tokens : []
-        const token = tokens.find((t) => t?.contractAddress) || null
-        if (!paymentAddress || !token) throw e
-
-        const decimals = typeof token.decimals === 'number' ? token.decimals : 6
-        // Default to a small fee payment (0.001 token units).
-        const feeValue = decimals >= 3 ? 10 ** (decimals - 3) : 1
-
-        feeOpt = {
-          token,
-          to: paymentAddress,
-          value: String(feeValue),
-          gasLimit: 0
-        }
-      }
+    const txHash = res?.txHash || res?.hash || res?.transactionHash
+    if (!txHash) {
+      throw new Error(`dapp-client-cli did not return txHash. keys=${Object.keys(res || {}).join(',')}`)
     }
 
-    const txHash = await client.sendTransaction(chainId, transactions, feeOpt)
-    return { walletAddress, txHash, feeOptionUsed: feeOpt }
+    return { walletAddress, txHash }
   }
 
   if (cmd === 'send-token') {
@@ -1305,16 +1162,6 @@ async function main() {
     const broadcast = args.includes('--broadcast')
     if (!to || !amount) throw new Error('Missing --to and/or --amount')
 
-    const walletAddress = await keytar.getPassword(SERVICE, `wallet:${name}`)
-    const explicitRaw = await keytar.getPassword(SERVICE, `explicitSession:${name}`)
-    const implicitPkRaw = await keytar.getPassword(SERVICE, `implicitPk:${name}`)
-    const implicitAttRaw = await keytar.getPassword(SERVICE, `implicitAttestation:${name}`)
-    const implicitSigRaw = await keytar.getPassword(SERVICE, `implicitIdentitySig:${name}`)
-    const implicitMetaRaw = await keytar.getPassword(SERVICE, `implicitMeta:${name}`)
-
-    if (!walletAddress) throw new Error(`Missing wallet address in Keychain: wallet:${name}`)
-    if (!explicitRaw) throw new Error(`Missing explicit session in Keychain: explicitSession:${name}`)
-
     const projectAccessKey = process.env.SEQUENCE_PROJECT_ACCESS_KEY
     if (!projectAccessKey) throw new Error('Missing SEQUENCE_PROJECT_ACCESS_KEY env var')
 
@@ -1326,124 +1173,8 @@ async function main() {
     const net = resolveNetworkFromChain(getArg(args, '--chain') || storedChain || 'polygon')
     const chainId = net.chainId
 
-    const { DappClient, TransportMode, jsonRevivers } = await import('@0xsequence/dapp-client')
-
-    const explicitSession = JSON.parse(explicitRaw, jsonRevivers)
-    if (!explicitSession?.pk) {
-      throw new Error('Stored explicit session is missing pk; re-link wallet')
-    }
-    const deadline = explicitSession?.config?.deadline
-    if (deadline) {
-      const deadlineSec = typeof deadline === 'bigint' ? Number(deadline) : Number(deadline)
-      const nowSec = Math.floor(Date.now() / 1000)
-      if (Number.isFinite(deadlineSec) && deadlineSec <= nowSec) {
-        throw new Error(`Explicit session has expired (deadline ${deadlineSec}). Re-link wallet to mint a fresh session.`)
-      }
-    }
-
-    // Keychain-backed storage modeled after wallet-dapp-client-cli
-    class KeychainSequenceStorage {
-      constructor() {
-        this.pendingRedirect = false
-        this.tempSessionPk = null
-        this.pendingRequest = null
-        this.explicitSessions = [{
-          pk: explicitSession.pk,
-          walletAddress: explicitSession.walletAddress || walletAddress,
-          chainId,
-          loginMethod: explicitSession.loginMethod,
-          userEmail: explicitSession.userEmail,
-          guard: explicitSession.guard
-        }]
-        this.implicitSession = null
-      }
-
-      async setPendingRedirectRequest(isPending) { this.pendingRedirect = !!isPending }
-      async isRedirectRequestPending() { return !!this.pendingRedirect }
-      async saveTempSessionPk(pk) { this.tempSessionPk = pk }
-      async getAndClearTempSessionPk() { const v = this.tempSessionPk; this.tempSessionPk = null; return v }
-      async savePendingRequest(context) { this.pendingRequest = context }
-      async getAndClearPendingRequest() { const v = this.pendingRequest; this.pendingRequest = null; return v }
-      async peekPendingRequest() { return this.pendingRequest }
-
-      async saveExplicitSession(sessionData) {
-        this.explicitSessions = [...this.explicitSessions.filter(s => !(s.walletAddress === sessionData.walletAddress && s.pk === sessionData.pk && s.chainId === sessionData.chainId)), sessionData]
-      }
-      async getExplicitSessions() { return [...this.explicitSessions] }
-      async clearExplicitSessions() { this.explicitSessions = [] }
-
-      async saveImplicitSession(sessionData) { this.implicitSession = sessionData }
-      async getImplicitSession() { return this.implicitSession }
-      async clearImplicitSession() { this.implicitSession = null }
-
-      async saveSessionlessConnection(sessionData) { this.sessionlessConnection = sessionData }
-      async getSessionlessConnection() { return this.sessionlessConnection ?? null }
-      async clearSessionlessConnection() { this.sessionlessConnection = null }
-
-      async saveSessionlessConnectionSnapshot(sessionData) { this.sessionlessConnectionSnapshot = sessionData }
-      async getSessionlessConnectionSnapshot() { return this.sessionlessConnectionSnapshot ?? null }
-      async clearSessionlessConnectionSnapshot() { this.sessionlessConnectionSnapshot = null }
-
-      async clearAllData() {
-        this.pendingRedirect = false
-        this.tempSessionPk = null
-        this.pendingRequest = null
-        this.explicitSessions = []
-        this.implicitSession = null
-        this.sessionlessConnection = null
-        this.sessionlessConnectionSnapshot = null
-      }
-    }
-
-    class MapSessionStorage {
-      constructor() { this.kv = new Map() }
-      async getItem(k) { return this.kv.has(k) ? this.kv.get(k) : null }
-      async setItem(k, v) { this.kv.set(k, v) }
-      async removeItem(k) { this.kv.delete(k) }
-    }
-
-    const sequenceStorage = new KeychainSequenceStorage()
-    const sequenceSessionStorage = new MapSessionStorage()
-
-    // Seed implicit session if we have it (optional, but helps dapp-client initialize correctly).
-    if (implicitPkRaw && implicitAttRaw && implicitSigRaw) {
-      const implicitAttestation = JSON.parse(implicitAttRaw, jsonRevivers)
-      const implicitIdentitySignature = JSON.parse(implicitSigRaw, jsonRevivers)
-      const meta = implicitMetaRaw ? JSON.parse(implicitMetaRaw, jsonRevivers) : {}
-      await sequenceStorage.saveImplicitSession({
-        pk: implicitPkRaw,
-        walletAddress: explicitSession.walletAddress || walletAddress,
-        attestation: implicitAttestation,
-        identitySignature: implicitIdentitySignature,
-        chainId,
-        loginMethod: meta.loginMethod,
-        userEmail: meta.userEmail,
-        guard: meta.guard
-      })
-    }
-
-    // @0xsequence/relayer expects window.fetch; provide a minimal shim for Node.
-    if (!globalThis.window) globalThis.window = { fetch: globalThis.fetch }
-    else if (!globalThis.window.fetch) globalThis.window.fetch = globalThis.fetch
-
-    installFetchLogger()
-
-    const keymachineUrl = process.env.SEQUENCE_KEYMACHINE_URL || 'https://keymachine.sequence.app'
-    const nodesUrl = process.env.SEQUENCE_NODES_URL || defaultNodesUrl(projectAccessKey)
-    const relayerUrl = process.env.SEQUENCE_RELAYER_URL || 'https://{network}-relayer.sequence.app'
-
-    const client = new DappClient(walletUrl, dappOrigin, projectAccessKey, {
-      transportMode: TransportMode.REDIRECT,
-      keymachineUrl,
-      nodesUrl,
-      relayerUrl,
-      sequenceStorage,
-      sequenceSessionStorage,
-      canUseIndexedDb: false
-    })
-
-    await client.initialize()
-    if (!client.isInitialized) throw new Error('Client not initialized')
+    const walletAddress = await keytar.getPassword(SERVICE, `wallet:${name}`)
+    if (!walletAddress) throw new Error(`Missing wallet address in Keychain: wallet:${name}`)
 
     const parseNativeUnits = (s) => {
       const d = BigInt(net?.nativeCurrency?.decimals ?? 18)
@@ -1472,40 +1203,17 @@ async function main() {
       return
     }
 
-    const feeOptions = await client.getFeeOptions(chainId, transactions)
-
-    const debugFee = ['1', 'true', 'yes'].includes(String(process.env.SEQ_ECO_DEBUG_FEE_OPTIONS || '').toLowerCase())
-    if (debugFee) {
-      console.log(
-        JSON.stringify(
-          {
-            ok: true,
-            walletName: name,
-            chain: net.name,
-            chainId,
-            feeOptionsCount: Array.isArray(feeOptions) ? feeOptions.length : 0,
-            feeOptions: (feeOptions || []).map((o) => ({
-              tokenSymbol: o?.token?.symbol,
-              tokenAddress: o?.token?.contractAddress ?? null,
-              // relay returns native token with null contractAddress in some cases
-              maxFee: o?.maxFee,
-              value: o?.value,
-              // include minimal diagnostics to confirm we actually got relayer options
-              quote: o?.quote ?? null,
-              fee: o?.fee ?? null
-            }))
-          },
-          null,
-          2
-        )
-      )
-    }
-
-    const feeOpt =
-      (feeOptions || []).find((o) => !o?.token?.contractAddress || o?.token?.contractAddress === '0x0000000000000000000000000000000000000000') ||
-      feeOptions?.[0]
-
-    const txHash = await client.sendTransaction(chainId, transactions, feeOpt)
+    const { txHash } = await runDappClientTx({
+      name,
+      walletName: name,
+      chainId,
+      walletUrl,
+      projectAccessKey,
+      dappOrigin,
+      transactions,
+      broadcast,
+      preferNativeFee: true
+    })
 
     const txBase = explorerTxBase(net)
 
