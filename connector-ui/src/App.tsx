@@ -193,6 +193,7 @@ function App() {
       const usdtLimit = params.get('usdtLimit')
       const nativeLimit = params.get('nativeLimit') || params.get('polLimit')
       const tokenLimitsRaw = params.get('tokenLimits')
+      const includeFeeOptionPermissions = ['1', 'true', 'yes'].includes(String(params.get('includeFeeOptionPermissions') || '').toLowerCase())
 
       const openTokenPermissions: any[] = []
 
@@ -264,12 +265,18 @@ function App() {
 
       const polValueLimit = nativeLimit ? BigInt(Math.floor(parseFloat(nativeLimit) * 1e18)) : 2000000000000000000n
 
-      const sessionConfig = {
+      const sessionConfig: any = {
         chainId,
         // Native spend limit (chain native token)
         valueLimit: polValueLimit,
         deadline: BigInt(Math.floor(Date.now() / 1000) + 60 * 60 * 24),
         permissions: [...basePermissions, ...oneOffErc20Permissions, ...openTokenPermissions, ...nativeFeePermission, ...feePermissions]
+      }
+
+      // Ask the wallet to automatically include whatever extra fee-payment permissions it needs
+      // to make FeeOptions/dispatch work reliably.
+      if (includeFeeOptionPermissions) {
+        sessionConfig.includeFeeOptionPermissions = true
       }
 
       // Connect will open the wallet UI (popup).
