@@ -187,8 +187,24 @@ export async function sendTransactionViaDappClientCli({ walletName, chainId, tra
     '--transactions',
     txPath,
   ]
+  const cliEnv = {
+    ...process.env,
+    // Belt + suspenders: dapp-client-cli reads ACCESS_KEY / PROJECT_ACCESS_KEY from env.
+    // Ensure these are present even if the caller only set SEQUENCE_PROJECT_ACCESS_KEY.
+    DAPP_CLIENT_CLI_ACCESS_KEY: process.env.DAPP_CLIENT_CLI_ACCESS_KEY || process.env.SEQUENCE_PROJECT_ACCESS_KEY,
+    ACCESS_KEY: process.env.ACCESS_KEY || process.env.SEQUENCE_PROJECT_ACCESS_KEY,
+    PROJECT_ACCESS_KEY: process.env.PROJECT_ACCESS_KEY || process.env.SEQUENCE_PROJECT_ACCESS_KEY,
+
+    // Also ensure the CLI sees our config consistently.
+    WALLET_URL: process.env.WALLET_URL || process.env.SEQUENCE_ECOSYSTEM_WALLET_URL,
+    ORIGIN: process.env.ORIGIN || process.env.SEQUENCE_DAPP_ORIGIN || process.env.SEQUENCE_ECOSYSTEM_CONNECTOR_URL,
+    NODES_URL: process.env.NODES_URL || process.env.SEQUENCE_NODES_URL || 'https://nodes.sequence.app/{network}',
+    RELAYER_URL: process.env.RELAYER_URL || process.env.SEQUENCE_RELAYER_URL || 'https://{network}-relayer.sequence.app',
+    KEYMACHINE_URL: process.env.KEYMACHINE_URL || process.env.SEQUENCE_KEYMACHINE_URL || 'https://keymachine.sequence.app'
+  }
+
   const { stdout: feeStdout, stderr: feeStderr } = await execFileAsync('node', [bin, ...feeOptsArgs], {
-    env: { ...process.env },
+    env: cliEnv,
   })
 
   function parseJsonFromMixedOutput(text) {
@@ -229,7 +245,7 @@ export async function sendTransactionViaDappClientCli({ walletName, chainId, tra
   ]
 
   const { stdout } = await execFileAsync('node', [bin, ...args], {
-    env: { ...process.env },
+    env: cliEnv,
   })
 
   // CLI prints JSON, but may also print informational lines to stdout.
