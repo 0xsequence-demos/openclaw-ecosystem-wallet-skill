@@ -6,11 +6,11 @@ settings:
 
 dependencies:
   '@0xsequence/dapp-client':
-    specifier: 3.0.0-beta.16
-    version: 3.0.0-beta.16(typescript@5.6.2)
+    specifier: 3.0.0-beta.17
+    version: 3.0.0-beta.17(typescript@5.6.2)
   '@0xsequence/wallet-primitives':
-    specifier: 3.0.0-beta.16
-    version: 3.0.0-beta.16(typescript@5.6.2)
+    specifier: 3.0.0-beta.17
+    version: 3.0.0-beta.17(typescript@5.6.2)
   ox:
     specifier: ^0.11.3
     version: 0.11.3(typescript@5.6.2)
@@ -64,13 +64,13 @@ devDependencies:
 
 packages:
 
-  /@0xsequence/dapp-client@3.0.0-beta.16(typescript@5.6.2):
-    resolution: {integrity: sha512-lo3ZNncrirvZEVpiUUfts/Skp6kmqJlKxUpEHj/1n+LO/L53dyqMUx9ti2qMIJGkAyKzZ66NdiqYqJoRKNNBIw==}
+  /@0xsequence/dapp-client@3.0.0-beta.17(typescript@5.6.2):
+    resolution: {integrity: sha512-Nb3ym/T1SNuyu6Y4cHBkPiZkNrFYyKEnl8CRpllmEJDnfAYAaGTvOhmeCqESDYLVNJe976UgxhQnkhxn5IpqNA==}
     dependencies:
-      '@0xsequence/guard': 3.0.0-beta.16(typescript@5.6.2)
-      '@0xsequence/relayer': 3.0.0-beta.16(typescript@5.6.2)
-      '@0xsequence/wallet-core': 3.0.0-beta.16(typescript@5.6.2)
-      '@0xsequence/wallet-primitives': 3.0.0-beta.16(typescript@5.6.2)
+      '@0xsequence/guard': 3.0.0-beta.17(typescript@5.6.2)
+      '@0xsequence/relayer': 3.0.0-beta.17(typescript@5.6.2)
+      '@0xsequence/wallet-core': 3.0.0-beta.17(typescript@5.6.2)
+      '@0xsequence/wallet-primitives': 3.0.0-beta.17(typescript@5.6.2)
       ox: 0.9.17(typescript@5.6.2)
     transitivePeerDependencies:
       - bufferutil
@@ -79,8 +79,8 @@ packages:
       - zod
     dev: false
 
-  /@0xsequence/guard@3.0.0-beta.16(typescript@5.6.2):
-    resolution: {integrity: sha512-DDGtK1pytbGZRv4R8ZSAYrftJvy9Uob2UynFK/htSdv2Gcf4Mip7tvKMzc3mUwybpyV2zXo+eHHi3nPCSrgfMA==}
+  /@0xsequence/guard@3.0.0-beta.17(typescript@5.6.2):
+    resolution: {integrity: sha512-k+TOh0RPIxBpcGc67nciVh33g8imcSka3UUeX7wDkZ8Ggnw/oPeJqW6JUCWYRpY2zJLjUgR9UbTt70wrKsVtJg==}
     dependencies:
       ox: 0.9.17(typescript@5.6.2)
     transitivePeerDependencies:
@@ -88,10 +88,10 @@ packages:
       - zod
     dev: false
 
-  /@0xsequence/relayer@3.0.0-beta.16(typescript@5.6.2):
-    resolution: {integrity: sha512-AThyuMWuvAJv64I2o38hJKtlRxzj51x8pYLWr70yqHkRi2CasHAEK5xEDhVJA9XCQ2g+XiKiBSezwsfNbStDVg==}
+  /@0xsequence/relayer@3.0.0-beta.17(typescript@5.6.2):
+    resolution: {integrity: sha512-PP75DQmaTQeNNzhC7zG5tCcGe44hfPyNKVEu5VjtYRQhQk+wlF1TjYxHUTB4ywynrnvfMYLDDE4uF7I6wjjMTg==}
     dependencies:
-      '@0xsequence/wallet-primitives': 3.0.0-beta.16(typescript@5.6.2)
+      '@0xsequence/wallet-primitives': 3.0.0-beta.17(typescript@5.6.2)
       mipd: 0.0.7(typescript@5.6.2)
       ox: 0.9.17(typescript@5.6.2)
       viem: 2.45.1(typescript@5.6.2)
@@ -102,12 +102,12 @@ packages:
       - zod
     dev: false
 
-  /@0xsequence/wallet-core@3.0.0-beta.16(typescript@5.6.2):
-    resolution: {integrity: sha512-Vi34/n5FPVXfbz6ykoiATXaG/CAYyMbo3f01/t3NuyZc2DkgzZ7/fIlN6G2i2PEi2aV3gTt/ENVapOsJVRD/xw==}
+  /@0xsequence/wallet-core@3.0.0-beta.17(typescript@5.6.2):
+    resolution: {integrity: sha512-0IKBI+25BUoDbi/m3/uehFMjM+WuF8RAXVfz3QUtp7hI/sA6v0+bFA2Gq/rQdtoB40HkZjxTtsMhKEzmxLZTPA==}
     dependencies:
-      '@0xsequence/guard': 3.0.0-beta.16(typescript@5.6.2)
-      '@0xsequence/relayer': 3.0.0-beta.16(typescript@5.6.2)
-      '@0xsequence/wallet-primitives': 3.0.0-beta.16(typescript@5.6.2)
+      '@0xsequence/guard': 3.0.0-beta.17(typescript@5.6.2)
+      '@0xsequence/relayer': 3.0.0-beta.17(typescript@5.6.2)
+      '@0xsequence/wallet-primitives': 3.0.0-beta.17(typescript@5.6.2)
       mipd: 0.0.7(typescript@5.6.2)
       ox: 0.9.17(typescript@5.6.2)
       viem: 2.45.1(typescript@5.6.2)
@@ -118,8 +118,8 @@ packages:
       - zod
     dev: false
 
-  /@0xsequence/wallet-primitives@3.0.0-beta.16(typescript@5.6.2):
-    resolution: {integrity: sha512-iwweQtEo/6sA6VBSVTQggdwKRvYoJOaRBrB+1trp05ULq4+rtvS+BG4mPfZQN86RWy93MYwCF1znsDon69u6wQ==}
+  /@0xsequence/wallet-primitives@3.0.0-beta.17(typescript@5.6.2):
+    resolution: {integrity: sha512-AjdckQi1tgqgHG55XvilfkINB0TTooCC2j5bHNB+FQyk30XwFCH7N6oUt55BzDycckHHrDhixsT7ua2V2/xxWg==}
     dependencies:
       ox: 0.9.17(typescript@5.6.2)
     transitivePeerDependencies:
