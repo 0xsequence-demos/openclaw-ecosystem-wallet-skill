@@ -232,10 +232,23 @@ export async function sendTransactionViaDappClientCli({ walletName, chainId, tra
     env: { ...process.env },
   })
 
-  // CLI prints JSON.
+  // CLI prints JSON, but may also print informational lines to stdout.
+  // Extract the first JSON object/array we can find.
   let parsed
   try {
-    parsed = JSON.parse(stdout)
+    const s = String(stdout || '')
+    let found = null
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i]
+      if (ch !== '{' && ch !== '[') continue
+      const candidate = s.slice(i).trim()
+      try {
+        found = JSON.parse(candidate)
+        break
+      } catch {}
+    }
+    if (!found) throw new Error('no json found')
+    parsed = found
   } catch {
     throw new Error(`Could not parse dapp-client-cli output as JSON:\n${stdout}`)
   }
