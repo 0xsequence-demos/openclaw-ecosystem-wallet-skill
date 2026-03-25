@@ -1,0 +1,5 @@
+packages:
+  - "shared"
+  - "worker"
+  - "worker/ui"
+  - "cli"
