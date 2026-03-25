@@ -25,6 +25,15 @@ export default {
       return response
     }
 
-    return env.ASSETS.fetch(request)
+    // Serve static assets if binding is available (production with [assets] config)
+    if (env.ASSETS) {
+      return env.ASSETS.fetch(request)
+    }
+
+    // During local dev without assets, return a helpful message
+    return new Response('Relay API is running. SPA not configured — use Vite dev server on port 4444.', {
+      status: 200,
+      headers: { 'Content-Type': 'text/plain' },
+    })
   },
 }
