@@ -1,0 +1,35 @@
+{
+  "name": "@pglabs/agent-wallet-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "polygon-agent": "./bin/polygon-agent.mjs"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@polygon-agent/shared": "workspace:*",
+    "@noble/curves": "^1.8.0",
+    "@noble/hashes": "^1.7.0",
+    "@0xsequence/dapp-client": "3.0.0-beta.17",
+    "@0xsequence/dapp-client-cli": "0.1.3",
+    "@0xsequence/wallet-primitives": "3.0.0-beta.17",
+    "@0xsequence/builder": "3.0.0-beta.17",
+    "@0xsequence/abi": "3.0.0-beta.17",
+    "commander": "^13.0.0",
+    "keytar": "^7.9.0",
+    "open": "^10.0.0",
+    "ora": "^8.0.0",
+    "chalk": "^5.0.0",
+    "prompts": "^2.4.0",
+    "dotenv": "^17.2.4"
+  },
+  "devDependencies": {
+    "@types/prompts": "^2.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
