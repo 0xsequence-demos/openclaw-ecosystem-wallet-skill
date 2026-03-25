@@ -18,9 +18,11 @@ export function useEcosystemWallet(): UseEcosystemWalletResult {
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Session config stored after connect, needed for SessionPayload
+  // Refs for data that must be readable immediately after connect() returns,
+  // without waiting for a React re-render (state updates are async).
   const sessionConfigRef = useRef<unknown>(null)
   const chainIdRef = useRef<number>(137)
+  const walletAddressRef = useRef<string | null>(null)
 
   const dappClient = useMemo(() => {
     return new DappClient(walletUrl, dappOrigin, projectAccessKey, {
@@ -65,6 +67,7 @@ export function useEcosystemWallet(): UseEcosystemWalletResult {
       const addr = await dappClient.getWalletAddress()
       if (!addr) throw new Error('Wallet address not available after connect')
 
+      walletAddressRef.current = addr
       setWalletAddress(addr)
       sessionConfigRef.current = sessionConfig
       setStatus('connected')
@@ -77,7 +80,7 @@ export function useEcosystemWallet(): UseEcosystemWalletResult {
   }
 
   async function getSessionMaterial(): Promise<SessionPayload> {
-    const addr = walletAddress
+    const addr = walletAddressRef.current
     const chainId = chainIdRef.current
     if (!addr) throw new Error('Wallet not connected')
 

@@ -26,7 +26,9 @@ export function encryptSession(
 
   const enc_key = deriveKey(shared, code_str, cli_pk, wallet_pk)
 
-  const plaintext = new TextEncoder().encode(JSON.stringify(payload))
+  const plaintext = new TextEncoder().encode(JSON.stringify(payload, (_k, v) =>
+    typeof v === 'bigint' ? v.toString() : v,
+  ))
   const nonce = randomBytes(24)
   const aad = concatBytes(cli_pk, wallet_pk)
 
