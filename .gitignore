@@ -5,6 +5,7 @@ node_modules/
 # Builds
 dist/
 .vite/
+.turbo/
 
 # Env / secrets
 .env

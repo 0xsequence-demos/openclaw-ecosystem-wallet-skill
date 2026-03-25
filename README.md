@@ -1,21 +1,23 @@
 # openclaw-ecosystem-wallet-skill
 
-Work-in-progress OpenClaw skill + tooling for a **Sequence Ecosystem Wallet (v3)** demo flow.
+OpenClaw skill + tooling for **Polygon Ecosystem Wallet** agent integration.
 
-This repo contains:
+## v2 (Active Development)
 
-- `connector-ui/` – a small web UI (Cloudflare Worker + Vite/React) that initiates an Ecosystem Wallet connection and exports session material as an encrypted blob for copy/paste.
-- `cli/sequence-eco/` – a Node CLI that:
-  - creates a link request
-  - ingests the encrypted blob
-  - stores session material locally (Keychain on macOS via `keytar`)
-  - (WIP) headless transaction sending
-- `research/` – notes and links used while building the prototype
+The v2 implementation lives in [`packages/`](./packages/) — a pnpm monorepo with a relay-based session handoff protocol. See **[packages/README.md](./packages/README.md)** for setup, local dev, and architecture docs.
 
-## Status
+```bash
+cd packages && pnpm install && pnpm build && pnpm test
+```
 
-- Linking + ingest works (webhook + ngrok supported).
-- Headless send works for Ecosystem Wallet v3 via `@0xsequence/dapp-client-cli` (used as the canonical transaction path).
+## Prototype (Reference)
+
+The original prototype directories remain as reference for SDK integration patterns:
+
+- `connector-ui/` – web UI (Cloudflare Worker + Vite/React) for wallet linking via TweetNaCl sealed-box
+- `cli/sequence-eco/` – Node CLI for wallet operations (plain .mjs, no build step)
+- `cli/trails/` – Trails DEX swap CLI
+- `research/` – design notes, security architecture, implementation plan
 
 ## Setup (from scratch)
 
