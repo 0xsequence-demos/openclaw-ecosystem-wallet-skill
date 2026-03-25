@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { DappClient, TransportMode, WebStorage, jsonReplacers } from '@0xsequence/dapp-client'
+import { DappClient, TransportMode, WebStorage } from '@0xsequence/dapp-client'
 import { Hex, Signature, Secp256k1, Address as OxAddress } from 'ox'
 import type { SessionPayload } from '@polygon-agent/shared'
 import { walletUrl, dappOrigin, projectAccessKey, relayerUrl, nodesUrl } from '../config.js'
@@ -8,6 +8,7 @@ interface UseEcosystemWalletResult {
   status: 'idle' | 'connecting' | 'connected' | 'error'
   walletAddress: string | null
   connect: (chainId: number, nativeLimit?: string) => Promise<void>
+  disconnect: () => Promise<void>
   getSessionMaterial: () => Promise<SessionPayload>
   error: string | null
 }
@@ -139,12 +140,29 @@ export function useEcosystemWallet(): UseEcosystemWalletResult {
       ecosystem_wallet_url: walletUrl,
       project_access_key: projectAccessKey,
       relayer_url: relayerUrl,
-      session_config: JSON.stringify(config, jsonReplacers),
+      session_config: JSON.stringify(config, bigintReplacer),
       implicit_session: implicitSession,
     }
   }
 
-  return { status, walletAddress, connect, getSessionMaterial, error }
+  async function disconnect() {
+    try {
+      await dappClient.disconnect()
+      setWalletAddress(null)
+      setStatus('idle')
+      setError(null)
+      sessionConfigRef.current = null
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Disconnect failed')
+    }
+  }
+
+  return { status, walletAddress, connect, disconnect, getSessionMaterial, error }
+}
+
+/** JSON replacer that converts BigInt to string for safe serialization */
+function bigintReplacer(_key: string, value: unknown): unknown {
+  return typeof value === 'bigint' ? value.toString() : value
 }
 
 /** Normalize identity signature to hex string.

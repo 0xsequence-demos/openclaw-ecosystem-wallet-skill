@@ -1,19 +1,16 @@
 import { useState, useEffect } from 'react'
-import { WalletConnect } from '../components/WalletConnect.js'
-import { SessionApproval } from '../components/SessionApproval.js'
 import { CodeDisplay } from '../components/CodeDisplay.js'
 import { useEcosystemWallet } from '../hooks/useEcosystemWallet.js'
 import { useSessionEncryption } from '../hooks/useSessionEncryption.js'
 import { fetchCliPublicKey } from '../lib/relay-api.js'
 
-type Phase = 'loading' | 'wallet_connect' | 'session_approval' | 'code_display' | 'done' | 'error'
+type Phase = 'loading' | 'wallet_connect' | 'encrypting' | 'code_display' | 'done' | 'error'
 
 export function AgentConnect({ rid }: { rid: string }) {
   const [phase, setPhase] = useState<Phase>('loading')
   const [cliPk, setCliPk] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  // Parse chain and native limit from URL params (set by CLI connect command)
   const params = new URLSearchParams(window.location.search)
   const chainId = parseInt(params.get('chain') || '137', 10)
   const nativeLimit = params.get('native_limit') || undefined
@@ -33,23 +30,19 @@ export function AgentConnect({ rid }: { rid: string }) {
       })
   }, [rid])
 
+  // Single action: connect wallet + approve session + encrypt + post to relay
   async function handleConnect() {
     try {
+      // dappClient.connect() handles both wallet connection AND session approval in the popup
       await wallet.connect(chainId, nativeLimit)
-      setPhase('session_approval')
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : 'Connection failed')
-      setPhase('error')
-    }
-  }
+      setPhase('encrypting')
 
-  async function handleApprove() {
-    try {
+      // Extract session material and encrypt + post to relay in one step
       const session = await wallet.getSessionMaterial()
       await encryption.encrypt(rid, session, cliPk!)
       setPhase('code_display')
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : 'Session approval failed')
+      setErrorMsg(e instanceof Error ? e.message : 'Connection failed')
       setPhase('error')
     }
   }
@@ -61,21 +54,28 @@ export function AgentConnect({ rid }: { rid: string }) {
       {phase === 'loading' && <p>Validating request...</p>}
 
       {phase === 'wallet_connect' && (
-        <WalletConnect
-          onConnect={handleConnect}
-          status={wallet.status}
-          error={wallet.error}
-        />
+        <div>
+          <h2>Connect Your Wallet</h2>
+          <p>This will open your Polygon Ecosystem Wallet to approve an agent session.</p>
+          {wallet.status === 'idle' && (
+            <button onClick={handleConnect}>Connect Wallet</button>
+          )}
+          {wallet.status === 'connecting' && <p>Connecting... (check your wallet popup)</p>}
+          {wallet.error && (
+            <div>
+              <p style={{ color: 'red' }}>{wallet.error}</p>
+              {wallet.error.includes('already exists') && (
+                <button onClick={async () => {
+                  await wallet.disconnect()
+                  setErrorMsg(null)
+                }}>Disconnect Previous Session</button>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
-      {phase === 'session_approval' && wallet.walletAddress && (
-        <SessionApproval
-          walletAddress={wallet.walletAddress}
-          onApprove={handleApprove}
-          status={encryption.status === 'encrypting' ? 'approving' : 'idle'}
-          error={encryption.error}
-        />
-      )}
+      {phase === 'encrypting' && <p>Securing session...</p>}
 
       {phase === 'code_display' && encryption.code && (
         <CodeDisplay code={encryption.code} />
@@ -92,7 +92,15 @@ export function AgentConnect({ rid }: { rid: string }) {
         <div>
           <h2>Error</h2>
           <p style={{ color: 'red' }}>{errorMsg}</p>
-          <button onClick={() => window.location.reload()}>Try Again</button>
+          {errorMsg?.includes('already exists') ? (
+            <button onClick={async () => {
+              await wallet.disconnect()
+              setErrorMsg(null)
+              setPhase('wallet_connect')
+            }}>Disconnect &amp; Retry</button>
+          ) : (
+            <button onClick={() => window.location.reload()}>Try Again</button>
+          )}
         </div>
       )}
     </div>
