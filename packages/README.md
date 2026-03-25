@@ -33,21 +33,17 @@ pnpm test
 
 ## Local Development
 
-### Option A: Worker serves everything (simplest)
+### Start the relay server
 
-Build the SPA, then start the Worker which serves both the API and the built SPA:
+The relay dev server is a lightweight Node.js HTTP server with in-memory storage that implements the same API as the Cloudflare Worker + Durable Objects:
 
 ```bash
-# Build shared + SPA
-pnpm build
-
-# Start local Worker (port 8787)
-pnpm dev
+# Build shared package first, then start relay
+pnpm dev:worker
+# → Relay dev server running at http://localhost:8787
 ```
 
-Open `http://localhost:8787/agent?rid=test` to see the SPA.
-
-The CLI talks to the same local Worker:
+The CLI talks to this local server:
 
 ```bash
 cd cli
@@ -56,12 +52,12 @@ pnpm build
 node bin/polygon-agent.mjs connect --name test --chain polygon
 ```
 
-### Option B: Vite HMR + Worker (for UI development)
+### UI development (Vite HMR)
 
-Run the Worker and Vite dev server separately. Vite proxies `/api/*` to the Worker:
+Run the relay server and Vite dev server together. Vite proxies `/api/*` to the relay:
 
 ```bash
-# Terminal 1: Start the Worker (relay API + Durable Objects)
+# Terminal 1: Start the relay server (port 8787)
 pnpm dev:worker
 
 # Terminal 2: Start Vite with hot reload (port 4444)
@@ -70,11 +66,15 @@ pnpm dev:ui
 
 Open `http://localhost:4444/agent?rid=test` — API calls proxy to port 8787.
 
-Point the CLI at the Worker directly:
+### Wrangler (Cloudflare runtime)
+
+If you need the full Cloudflare Workers runtime with Durable Objects:
 
 ```bash
-POLYGON_AGENT_RELAY_URL=http://localhost:8787 node cli/bin/polygon-agent.mjs connect --name test
+cd worker && pnpm dev:wrangler
 ```
+
+Note: `wrangler dev` requires `workerd` which may not work on all systems (known issues on NixOS). The Node.js dev server is the recommended local dev path.
 
 ## Integration Tests
 
