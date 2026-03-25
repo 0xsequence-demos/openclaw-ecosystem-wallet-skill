@@ -29,6 +29,7 @@ const RELAY_URL = process.argv[2] || 'http://localhost:8787'
 
 // Import from built shared package
 const {
+  generateX25519Keypair,
   encryptSession,
   decryptSession,
   hashCode,
@@ -36,9 +37,6 @@ const {
   hexToBytes,
   base64urlToBytes,
 } = await import('../shared/dist/index.js')
-
-// Import x25519 for key generation
-const { x25519 } = await import('@noble/curves/ed25519')
 
 let passed = 0
 let failed = 0
@@ -70,8 +68,7 @@ async function testHappyPath() {
   console.log('\n--- Happy Path: Full session handoff ---')
 
   // 1. CLI generates keypair and registers
-  const cli_sk = x25519.utils.randomPrivateKey()
-  const cli_pk = x25519.getPublicKey(cli_sk)
+  const { secretKey: cli_sk, publicKey: cli_pk } = generateX25519Keypair()
   const cli_pk_hex = bytesToHex(cli_pk)
 
   const { status: createStatus, data: createData } = await api('POST', '/api/relay/request', {
@@ -151,8 +148,7 @@ async function testHappyPath() {
 async function testWrongCode() {
   console.log('\n--- Error Path: Wrong code + exhaustion ---')
 
-  const cli_sk = x25519.utils.randomPrivateKey()
-  const cli_pk = x25519.getPublicKey(cli_sk)
+  const { secretKey: cli_sk, publicKey: cli_pk } = generateX25519Keypair()
 
   const { data: createData } = await api('POST', '/api/relay/request', {
     cli_pk: bytesToHex(cli_pk),

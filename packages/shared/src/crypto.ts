@@ -6,6 +6,12 @@ import { PROTOCOL_VERSION, CODE_LENGTH } from './constants.js'
 import { bytesToHex, bytesToBase64url, concatBytes } from './encoding.js'
 import type { SessionPayload, EncryptResult } from './types.js'
 
+export function generateX25519Keypair(): { secretKey: Uint8Array; publicKey: Uint8Array } {
+  const secretKey = x25519.utils.randomPrivateKey()
+  const publicKey = x25519.getPublicKey(secretKey)
+  return { secretKey, publicKey }
+}
+
 export function encryptSession(
   cli_pk: Uint8Array,
   payload: SessionPayload,

@@ -1,6 +1,5 @@
 import { Command } from 'commander'
-import { x25519 } from '@noble/curves/ed25519'
-import { decryptSession, bytesToHex, hexToBytes, base64urlToBytes } from '@polygon-agent/shared'
+import { generateX25519Keypair, decryptSession, bytesToHex, hexToBytes, base64urlToBytes } from '@polygon-agent/shared'
 import open from 'open'
 import ora from 'ora'
 import prompts from 'prompts'
@@ -21,8 +20,7 @@ export const connectCommand = new Command('connect')
       const chainId = resolveChainId(opts.chain)
 
       // 1. Generate ephemeral X25519 keypair
-      const cli_sk = x25519.utils.randomPrivateKey()
-      const cli_pk = x25519.getPublicKey(cli_sk)
+      const { secretKey: cli_sk, publicKey: cli_pk } = generateX25519Keypair()
       const cli_pk_hex = bytesToHex(cli_pk)
 
       // 2. Register with relay
