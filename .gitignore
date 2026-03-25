@@ -21,3 +21,6 @@ dist/
 
 # Local scratch
 tmp/
+
+# Worktrees
+.worktrees/
