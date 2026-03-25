@@ -1,1 +1,1 @@
-{"root":["./src/App.tsx","./src/config.ts","./src/main.tsx","./src/pages/AgentConnect.tsx"],"version":"5.9.3"}
+{"root":["./src/App.tsx","./src/config.ts","./src/main.tsx","./src/components/CodeDisplay.tsx","./src/components/SessionApproval.tsx","./src/components/WalletConnect.tsx","./src/hooks/useEcosystemWallet.ts","./src/hooks/useSessionEncryption.ts","./src/lib/relay-api.ts","./src/pages/AgentConnect.tsx"],"version":"5.9.3"}

@@ -13,6 +13,11 @@ export function AgentConnect({ rid }: { rid: string }) {
   const [cliPk, setCliPk] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
+  // Parse chain and native limit from URL params (set by CLI connect command)
+  const params = new URLSearchParams(window.location.search)
+  const chainId = parseInt(params.get('chain') || '137', 10)
+  const nativeLimit = params.get('native_limit') || undefined
+
   const wallet = useEcosystemWallet()
   const encryption = useSessionEncryption()
 
@@ -30,7 +35,7 @@ export function AgentConnect({ rid }: { rid: string }) {
 
   async function handleConnect() {
     try {
-      await wallet.connect()
+      await wallet.connect(chainId, nativeLimit)
       setPhase('session_approval')
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Connection failed')

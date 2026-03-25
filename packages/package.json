@@ -7,7 +7,7 @@
     "lint": "turbo run lint",
     "dev": "pnpm build && pnpm --filter @polygon-agent/worker dev",
     "dev:ui": "pnpm --filter @polygon-agent/shared build && pnpm --filter @polygon-agent/ui dev",
-    "dev:worker": "pnpm --filter @polygon-agent/shared build && pnpm --filter @polygon-agent/worker dev",
+    "dev:worker": "pnpm --filter @polygon-agent/shared build && pnpm --filter @polygon-agent/ui build && pnpm --filter @polygon-agent/worker dev",
     "test:relay": "pnpm --filter @polygon-agent/shared build && node test/relay-integration.mjs",
     "simulate:browser": "node test/simulate-browser.mjs"
   },

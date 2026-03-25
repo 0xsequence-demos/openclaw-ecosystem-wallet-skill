@@ -8,6 +8,9 @@
   },
   "dependencies": {
     "@polygon-agent/shared": "workspace:*",
+    "@0xsequence/dapp-client": "3.0.5",
+    "@0xsequence/wallet-primitives": "3.0.5",
+    "ox": "^0.11.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

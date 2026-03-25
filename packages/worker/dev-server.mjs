@@ -13,6 +13,9 @@
  */
 
 import { createServer } from 'node:http'
+import { existsSync, readFileSync } from 'node:fs'
+import { join, extname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { customAlphabet } from 'nanoid'
 import {
   MAX_CODE_ATTEMPTS,
@@ -114,6 +117,44 @@ class InMemoryRelay {
   }
 }
 
+// --- SPA static file serving ---
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
+const SPA_DIR = join(__dirname, 'ui', 'dist')
+
+const MIME_TYPES = {
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.md': 'text/markdown',
+}
+
+function serveSPA(pathname, res) {
+  // Try exact file match first
+  const filePath = join(SPA_DIR, pathname)
+  if (existsSync(filePath) && !filePath.endsWith('/')) {
+    const ext = extname(filePath)
+    const mime = MIME_TYPES[ext] || 'application/octet-stream'
+    res.writeHead(200, { 'Content-Type': mime })
+    return res.end(readFileSync(filePath))
+  }
+
+  // SPA fallback: serve index.html for all non-file routes
+  const indexPath = join(SPA_DIR, 'index.html')
+  if (existsSync(indexPath)) {
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    return res.end(readFileSync(indexPath))
+  }
+
+  // SPA not built yet
+  res.writeHead(503, { 'Content-Type': 'text/plain' })
+  res.end('SPA not built. Run: cd packages && pnpm build\n')
+}
+
 // --- HTTP server ---
 
 function json(res, data, status = 200) {
@@ -148,9 +189,9 @@ const server = createServer(async (req, res) => {
     return res.end()
   }
 
-  // Only handle /api/relay/* routes
+  // Serve SPA static files for non-API routes
   if (!url.pathname.startsWith('/api/relay/')) {
-    return json(res, { message: 'Relay dev server running. API at /api/relay/*' }, 200)
+    return serveSPA(url.pathname, res)
   }
 
   try {

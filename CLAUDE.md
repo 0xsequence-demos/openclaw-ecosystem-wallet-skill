@@ -73,4 +73,4 @@ v2 SPA: `VITE_WALLET_URL`, `VITE_PROJECT_ACCESS_KEY`, `VITE_DAPP_ORIGIN` (Vite e
 - Crypto primitives from `@noble/*` family (not tweetnacl)
 - Shared types/encoding in `packages/shared`, imported by both worker and cli
 - Tests use vitest
-- `git -c commit.gpgsign=false` needed for commits (GPG timeout on this machine)
+- Never bypass GPG signing — if commits fail, stage files and let the user commit manually
