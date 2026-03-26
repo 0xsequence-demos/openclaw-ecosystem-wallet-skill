@@ -13,6 +13,7 @@ export const connectCommand = new Command('connect')
   .option('--chain <chain>', 'Chain name or ID', 'polygon')
   .option('--relay-url <url>', 'Relay URL override')
   .option('--native-limit <amount>', 'Max native token spend in session (human units, e.g. "1.0")')
+  .option('--token-limits <limits>', 'ERC20 spend limits (e.g. "USDC:50,USDT:50,WETH:0.1")')
   .option('--session-expiry <dur>', 'Session duration (default: "24h", max: "7d")', '24h')
   .option('--no-browser', 'Print URL instead of auto-opening browser')
   .action(async (opts) => {
@@ -32,6 +33,7 @@ export const connectCommand = new Command('connect')
       const relayUrl = opts.relayUrl ?? RELAY_URL
       const params = new URLSearchParams({ rid: request_id, chain: String(chainId) })
       if (opts.nativeLimit) params.set('native_limit', opts.nativeLimit)
+      if (opts.tokenLimits) params.set('token_limits', opts.tokenLimits)
       if (opts.sessionExpiry) params.set('expiry', opts.sessionExpiry)
       const connectUrl = `${relayUrl}/agent?${params}`
 

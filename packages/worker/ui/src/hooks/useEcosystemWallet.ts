@@ -1,13 +1,14 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { DappClient, TransportMode, WebStorage, jsonReplacers } from '@0xsequence/dapp-client'
+import { DappClient, TransportMode, WebStorage, Utils, Permission, jsonReplacers } from '@0xsequence/dapp-client'
 import { Hex, Signature, Secp256k1, Address as OxAddress } from 'ox'
 import type { SessionPayload } from '@polygon-agent/shared'
 import { walletUrl, dappOrigin, projectAccessKey, relayerUrl, nodesUrl } from '../config.js'
+import { resolveErc20Symbol } from '../lib/token-directory.js'
 
 interface UseEcosystemWalletResult {
   status: 'idle' | 'connecting' | 'connected' | 'error'
   walletAddress: string | null
-  connect: (chainId: number, nativeLimit?: string) => Promise<void>
+  connect: (chainId: number, nativeLimit?: string, tokenLimits?: string) => Promise<void>
   disconnect: () => Promise<void>
   getSessionMaterial: () => Promise<SessionPayload>
   error: string | null
@@ -39,7 +40,7 @@ export function useEcosystemWallet(): UseEcosystemWalletResult {
     })
   }, [dappClient])
 
-  async function connect(chainId: number, nativeLimit?: string) {
+  async function connect(chainId: number, nativeLimit?: string, tokenLimits?: string) {
     setStatus('connecting')
     setError(null)
     chainIdRef.current = chainId
@@ -50,14 +51,34 @@ export function useEcosystemWallet(): UseEcosystemWalletResult {
         ? BigInt(Math.floor(parseFloat(nativeLimit) * 1e18))
         : 2000000000000000000n
 
+      // Base permission: ValueForwarder for native token sends
+      const permissions: any[] = [
+        { target: '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca', rules: [] },
+      ]
+
+      // Add ERC20 token permissions from tokenLimits param (e.g., "USDC:50,USDT:50,WETH:0.1")
+      if (tokenLimits) {
+        const entries = tokenLimits.split(',').map(s => s.trim()).filter(Boolean)
+        for (const entry of entries) {
+          const [sym, amt] = entry.split(':').map(x => x.trim())
+          if (!sym || !amt) throw new Error(`Invalid token limit: "${entry}". Use SYMBOL:AMOUNT format.`)
+          const token = await resolveErc20Symbol(chainId, sym)
+          if (!token) throw new Error(`Token "${sym}" not found for chain ${chainId}`)
+          const tokenValueLimit = BigInt(Math.floor(parseFloat(amt) * 10 ** token.decimals))
+          permissions.push(
+            Utils.PermissionBuilder.for(token.address as `0x${string}`)
+              .forFunction('function transfer(address to, uint256 value)')
+              .withUintNParam('value', tokenValueLimit, 256, Permission.ParameterOperation.LESS_THAN_OR_EQUAL, true)
+              .build()
+          )
+        }
+      }
+
       const sessionConfig: Record<string, unknown> = {
         chainId,
         valueLimit,
         deadline: BigInt(Math.floor(Date.now() / 1000) + 60 * 60 * 24), // 24h
-        permissions: [
-          // ValueForwarder: used for native token sends
-          { target: '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca', rules: [] },
-        ],
+        permissions,
       }
 
       await dappClient.connect(chainId, sessionConfig as any, {

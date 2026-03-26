@@ -14,6 +14,7 @@ export function AgentConnect({ rid }: { rid: string }) {
   const params = new URLSearchParams(window.location.search)
   const chainId = parseInt(params.get('chain') || '137', 10)
   const nativeLimit = params.get('native_limit') || undefined
+  const tokenLimits = params.get('token_limits') || undefined
 
   const wallet = useEcosystemWallet()
   const encryption = useSessionEncryption()
@@ -34,7 +35,7 @@ export function AgentConnect({ rid }: { rid: string }) {
   async function handleConnect() {
     try {
       // dappClient.connect() handles both wallet connection AND session approval in the popup
-      await wallet.connect(chainId, nativeLimit)
+      await wallet.connect(chainId, nativeLimit, tokenLimits)
       setPhase('encrypting')
 
       // Extract session material and encrypt + post to relay in one step
