@@ -18,20 +18,20 @@ importers:
   cli:
     dependencies:
       '@0xsequence/abi':
-        specifier: 3.0.0-beta.17
-        version: 3.0.0-beta.17
+        specifier: 3.0.5
+        version: 3.0.5
       '@0xsequence/builder':
-        specifier: 3.0.0-beta.17
-        version: 3.0.0-beta.17
+        specifier: 3.0.5
+        version: 3.0.5
       '@0xsequence/dapp-client':
-        specifier: 3.0.0-beta.17
-        version: 3.0.0-beta.17(typescript@5.9.3)
+        specifier: 3.0.5
+        version: 3.0.5(typescript@5.9.3)
       '@0xsequence/dapp-client-cli':
-        specifier: 0.1.3
-        version: 0.1.3(typescript@5.9.3)
+        specifier: 0.1.7
+        version: 0.1.7(typescript@5.9.3)
       '@0xsequence/wallet-primitives':
-        specifier: 3.0.0-beta.17
-        version: 3.0.0-beta.17(typescript@5.9.3)
+        specifier: 3.0.5
+        version: 3.0.5(typescript@5.9.3)
       '@noble/curves':
         specifier: ^1.8.0
         version: 1.9.7
@@ -156,18 +156,18 @@ importers:
 
 packages:
 
-  '@0xsequence/abi@3.0.0-beta.17':
-    resolution: {integrity: sha512-YoIBLe1CzhEX0fLAWgI8ccPKT9EptzGsCjXPlZWyEB6lRyxvM3qhtVoZfB5t2I4n7IIhgS6FN8KdjFBidnhOkw==}
+  '@0xsequence/abi@3.0.5':
+    resolution: {integrity: sha512-3OT/UZtsl1ja4VsPKVDuR2tHh2oJewRnK7RoQZOufDQevbDxKhDRwBB5CWU/5A1O2BBZnwEqFH9P+mSvI3d15A==}
 
-  '@0xsequence/builder@3.0.0-beta.17':
-    resolution: {integrity: sha512-Oy4KAO4ow5AnTfHMJndZBG9ZF0MCSpih3NuYD1BzkPlueYMckWc6MKJNO+/vJn5ioKZUkeCGafOfT3WwbsrQpg==}
+  '@0xsequence/builder@3.0.5':
+    resolution: {integrity: sha512-nopNT+PhVaLv5UIN9FdzSA/wIqa033Ji4Q7IbhwClgN2Yj6rN4FDucRPGNfHfy11d6q/24x9XlTG2xv5JcxOKA==}
 
-  '@0xsequence/dapp-client-cli@0.1.3':
-    resolution: {integrity: sha512-63SFuqx9oflaiu6RnAWY5ol6/kNfqxTbwE5D0fQF+ebZUcW11XX7heZKdsULbCRrQzB4T5WN9uZKMk/WgwODLg==}
+  '@0xsequence/dapp-client-cli@0.1.7':
+    resolution: {integrity: sha512-/y+Q9nlfAkuljdQSPejN7SdXf6hMXmMW43yUK+KjSrFMr3nNRCdPGEIbabfJK6b/YC9vmH8lDJijXOJ9MVP+kw==}
     hasBin: true
 
-  '@0xsequence/dapp-client@3.0.0-beta.17':
-    resolution: {integrity: sha512-Nb3ym/T1SNuyu6Y4cHBkPiZkNrFYyKEnl8CRpllmEJDnfAYAaGTvOhmeCqESDYLVNJe976UgxhQnkhxn5IpqNA==}
+  '@0xsequence/dapp-client@3.0.1':
+    resolution: {integrity: sha512-uyVzmYU2N3ayZRdFvki19OiYVHiYDBAMrt+6EE1VnG6U3oCMrRLCTof0Ez/SV/zTL2W/Y0yLUNpWgSXN1tABhw==}
 
   '@0xsequence/dapp-client@3.0.5':
     resolution: {integrity: sha512-Bb8DLhUO/OTd1/bLeUvenxJmlFjzYmbnwI6zjED2ICBEGSt5plLMOywbTE4WTCjvrTk2ElAGRVkceoz1dzDDOg==}
@@ -180,9 +180,6 @@ packages:
 
   '@0xsequence/wallet-core@3.0.5':
     resolution: {integrity: sha512-MRlq+O79gi/GWTgyRiBX66WLlJLoSEfQsLqh6qbbMEBSqZQVRlRGM7CavzzM51O3bw3X3jaF7jkJDd41Dwui5A==}
-
-  '@0xsequence/wallet-primitives@3.0.0-beta.17':
-    resolution: {integrity: sha512-AjdckQi1tgqgHG55XvilfkINB0TTooCC2j5bHNB+FQyk30XwFCH7N6oUt55BzDycckHHrDhixsT7ua2V2/xxWg==}
 
   '@0xsequence/wallet-primitives@3.0.5':
     resolution: {integrity: sha512-LbC1xsoN+8eKFd9dG5+2E34mTaL1Tiqw4+Mt7BteGN2kMVr6NQMrOYfQ2fBKyq3olVUwVBqcLkt7n6uMXR6q+g==}
@@ -2023,13 +2020,13 @@ packages:
 
 snapshots:
 
-  '@0xsequence/abi@3.0.0-beta.17': {}
+  '@0xsequence/abi@3.0.5': {}
 
-  '@0xsequence/builder@3.0.0-beta.17': {}
+  '@0xsequence/builder@3.0.5': {}
 
-  '@0xsequence/dapp-client-cli@0.1.3(typescript@5.9.3)':
+  '@0xsequence/dapp-client-cli@0.1.7(typescript@5.9.3)':
     dependencies:
-      '@0xsequence/dapp-client': 3.0.0-beta.17(typescript@5.9.3)
+      '@0xsequence/dapp-client': 3.0.1(typescript@5.9.3)
       dotenv: 17.3.1
       ox: 0.9.17(typescript@5.9.3)
       undici: 7.24.4
@@ -2040,12 +2037,12 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@0xsequence/dapp-client@3.0.0-beta.17(typescript@5.9.3)':
+  '@0xsequence/dapp-client@3.0.1(typescript@5.9.3)':
     dependencies:
       '@0xsequence/guard': 3.0.5(typescript@5.9.3)
       '@0xsequence/relayer': 3.0.5(typescript@5.9.3)
       '@0xsequence/wallet-core': 3.0.5(typescript@5.9.3)
-      '@0xsequence/wallet-primitives': 3.0.0-beta.17(typescript@5.9.3)
+      '@0xsequence/wallet-primitives': 3.0.5(typescript@5.9.3)
       ox: 0.9.17(typescript@5.9.3)
     transitivePeerDependencies:
       - bufferutil
@@ -2097,13 +2094,6 @@ snapshots:
       - bufferutil
       - typescript
       - utf-8-validate
-      - zod
-
-  '@0xsequence/wallet-primitives@3.0.0-beta.17(typescript@5.9.3)':
-    dependencies:
-      ox: 0.9.17(typescript@5.9.3)
-    transitivePeerDependencies:
-      - typescript
       - zod
 
   '@0xsequence/wallet-primitives@3.0.5(typescript@5.9.3)':
