@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process'
 import { mkdirSync, writeFileSync, unlinkSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
-import { createRequire } from 'node:module'
 import type { SessionPayload } from '@polygon-agent/shared'
 
 export interface Transaction {
@@ -27,6 +27,13 @@ export async function sendTransaction(
 
   try {
     const bin = resolveDappClientCliBin()
+    const accessKey = session.project_access_key || process.env.SEQUENCE_PROJECT_ACCESS_KEY
+    if (!accessKey) {
+      throw new Error('No project access key. Set SEQUENCE_PROJECT_ACCESS_KEY or reconnect with VITE_PROJECT_ACCESS_KEY configured.')
+    }
+
+    // Match prototype approach: pass config ONLY via env vars, not CLI args.
+    // dapp-client-cli reads WALLET_URL, ORIGIN, PROJECT_ACCESS_KEY etc from env.
     const commonArgs = [
       '--state', statePath,
       '--passphrase', passphrase,
@@ -38,7 +45,7 @@ export async function sendTransaction(
       commonArgs.push('--debug')
     }
 
-    const cliEnv = buildCliEnv(session)
+    const cliEnv = buildCliEnv(session, accessKey)
 
     // Step 1: Get fee options
     const { stdout: feeStdout } = await execFileAsync('node', [
@@ -110,8 +117,8 @@ async function buildCliState(session: SessionPayload): Promise<{ statePath: stri
   // Set up config
   await stateManager.update((state: any) => {
     state.config.walletUrl = session.ecosystem_wallet_url
-    state.config.origin = session.ecosystem_wallet_url // dApp origin
-    state.config.projectAccessKey = session.project_access_key
+    state.config.origin = session.dapp_origin
+    state.config.projectAccessKey = session.project_access_key || process.env.SEQUENCE_PROJECT_ACCESS_KEY
     state.config.keymachineUrl = process.env.SEQUENCE_KEYMACHINE_URL || 'https://keymachine.sequence.app'
     state.config.nodesUrl = process.env.SEQUENCE_NODES_URL || 'https://nodes.sequence.app/{network}'
     state.config.relayerUrl = session.relayer_url || process.env.SEQUENCE_RELAYER_URL || 'https://{network}-relayer.sequence.app'
@@ -128,6 +135,11 @@ async function buildCliState(session: SessionPayload): Promise<{ statePath: stri
     state.storage.sessionlessConnectionSnapshot = { walletAddress: session.wallet_address }
   })
 
+  // Parse guard from pre-serialized JSON (jsonReplacers preserves Sets)
+  const guard = session.implicit_session?.guard
+    ? JSON.parse(session.implicit_session.guard, jsonRevivers)
+    : undefined
+
   // Save explicit session
   await storage.saveExplicitSession({
     pk: session.session_private_key,
@@ -137,7 +149,7 @@ async function buildCliState(session: SessionPayload): Promise<{ statePath: stri
     config: sessionConfig,
     loginMethod: session.implicit_session?.login_method,
     userEmail: session.implicit_session?.user_email,
-    guard: session.implicit_session?.guard,
+    guard,
   })
 
   // Update sessionless connection with metadata
@@ -146,7 +158,7 @@ async function buildCliState(session: SessionPayload): Promise<{ statePath: stri
       walletAddress: session.wallet_address,
       loginMethod: session.implicit_session?.login_method,
       userEmail: session.implicit_session?.user_email,
-      guard: session.implicit_session?.guard,
+      guard,
     }
     state.storage.sessionlessConnection = meta
     state.storage.sessionlessConnectionSnapshot = meta
@@ -155,11 +167,13 @@ async function buildCliState(session: SessionPayload): Promise<{ statePath: stri
   // Save implicit session if available
   if (session.implicit_session) {
     const imp = session.implicit_session
+    // Parse attestation from pre-serialized JSON (jsonReplacers preserves Uint8Arrays)
+    const attestation = JSON.parse(imp.attestation, jsonRevivers)
     await storage.saveImplicitSession({
       pk: imp.pk,
       walletAddress: session.wallet_address,
       chainId: imp.chain_id,
-      attestation: imp.attestation,
+      attestation,
       identitySignature: imp.identity_signature,
     })
   }
@@ -184,20 +198,22 @@ function getPassphrase(): string {
 }
 
 function resolveDappClientCliBin(): string {
-  // Resolve the dapp-client-cli entry point from node_modules
-  const require = createRequire(import.meta.url)
-  const cliPkg = require.resolve('@0xsequence/dapp-client-cli/package.json')
-  return join(dirname(cliPkg), 'dist', 'index.js')
+  // Use import.meta.resolve (ESM-native) to find an exported subpath,
+  // then navigate to the bin entry in the same dist/ directory.
+  const stateUrl = import.meta.resolve('@0xsequence/dapp-client-cli/state')
+  const statePath = fileURLToPath(stateUrl)
+  return join(dirname(statePath), 'index.js')
 }
 
-function buildCliEnv(session: SessionPayload): Record<string, string | undefined> {
+function buildCliEnv(session: SessionPayload, accessKey: string): Record<string, string | undefined> {
+  // Match prototype: env var names that dapp-client-cli's configFromEnv() reads
   return {
     ...process.env,
-    DAPP_CLIENT_CLI_ACCESS_KEY: session.project_access_key,
-    ACCESS_KEY: session.project_access_key,
-    PROJECT_ACCESS_KEY: session.project_access_key,
+    DAPP_CLIENT_CLI_ACCESS_KEY: accessKey,
+    ACCESS_KEY: accessKey,
+    PROJECT_ACCESS_KEY: accessKey,
     WALLET_URL: session.ecosystem_wallet_url,
-    ORIGIN: session.ecosystem_wallet_url,
+    ORIGIN: session.dapp_origin,
     NODES_URL: process.env.SEQUENCE_NODES_URL || 'https://nodes.sequence.app/{network}',
     RELAYER_URL: session.relayer_url || process.env.SEQUENCE_RELAYER_URL || 'https://{network}-relayer.sequence.app',
     KEYMACHINE_URL: process.env.SEQUENCE_KEYMACHINE_URL || 'https://keymachine.sequence.app',

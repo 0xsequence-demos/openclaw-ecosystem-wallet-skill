@@ -7,6 +7,8 @@ export interface SessionPayload {
   permissions: SessionPermissions
   expiry: number
   ecosystem_wallet_url: string
+  /** The origin URL where the session was approved (dApp/connector origin) */
+  dapp_origin: string
   project_access_key: string
   relayer_url?: string
   /** Full session config object as passed to dappClient.connect().
@@ -24,9 +26,11 @@ export interface SessionPermissions {
 
 export interface ImplicitSession {
   pk: string
+  /** Attestation object, pre-serialized with jsonReplacers to preserve Uint8Arrays */
   attestation: string
   identity_signature: string
   chain_id: number
+  /** Guard object, pre-serialized with jsonReplacers to preserve Sets */
   guard?: string
   login_method?: string
   user_email?: string

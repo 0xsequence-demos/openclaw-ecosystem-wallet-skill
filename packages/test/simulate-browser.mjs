@@ -58,6 +58,7 @@ const mockSession = {
   },
   expiry: Math.floor(Date.now() / 1000) + 86400,
   ecosystem_wallet_url: 'https://wallet.polygon.technology',
+  dapp_origin: 'https://relay.polygon.agent.xyz',
   project_access_key: 'demo-access-key',
 }
 

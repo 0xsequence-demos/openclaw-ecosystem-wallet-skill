@@ -13,6 +13,7 @@ const MOCK_SESSION: SessionPayload = {
   permissions: { native_limit: '1000000000000000000' },
   expiry: Math.floor(Date.now() / 1000) + 86400,
   ecosystem_wallet_url: 'https://wallet.polygon.technology',
+  dapp_origin: 'https://relay.polygon.agent.xyz',
   project_access_key: 'test-access-key',
 }
 

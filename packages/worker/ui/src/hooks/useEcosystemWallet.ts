@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { DappClient, TransportMode, WebStorage } from '@0xsequence/dapp-client'
+import { DappClient, TransportMode, WebStorage, jsonReplacers } from '@0xsequence/dapp-client'
 import { Hex, Signature, Secp256k1, Address as OxAddress } from 'ox'
 import type { SessionPayload } from '@polygon-agent/shared'
 import { walletUrl, dappOrigin, projectAccessKey, relayerUrl, nodesUrl } from '../config.js'
@@ -110,12 +110,14 @@ export function useEcosystemWallet(): UseEcosystemWalletResult {
       const implicit = await storage.getImplicitSession()
       if (implicit?.pk && implicit?.attestation && implicit?.identitySignature) {
         const identitySignature = normalizeSignature(implicit.identitySignature)
+        // Pre-serialize complex objects with jsonReplacers to preserve
+        // Uint8Arrays (attestation) and Sets (guard.moduleAddresses)
         implicitSession = {
           pk: implicit.pk,
-          attestation: implicit.attestation,
+          attestation: JSON.stringify(implicit.attestation, jsonReplacers),
           identity_signature: identitySignature,
           chain_id: implicit.chainId,
-          guard: (implicit as any).guard,
+          guard: (implicit as any).guard ? JSON.stringify((implicit as any).guard, jsonReplacers) : undefined,
           login_method: (implicit as any).loginMethod,
           user_email: (implicit as any).userEmail,
         }
@@ -141,9 +143,10 @@ export function useEcosystemWallet(): UseEcosystemWalletResult {
       },
       expiry,
       ecosystem_wallet_url: walletUrl,
+      dapp_origin: dappOrigin,
       project_access_key: projectAccessKey,
       relayer_url: relayerUrl,
-      session_config: JSON.stringify(config, bigintReplacer),
+      session_config: safeStringifyConfig(config),
       implicit_session: implicitSession,
     }
   }
@@ -163,9 +166,15 @@ export function useEcosystemWallet(): UseEcosystemWalletResult {
   return { status, walletAddress, connect, disconnect, getSessionMaterial, error }
 }
 
-/** JSON replacer that converts BigInt to string for safe serialization */
-function bigintReplacer(_key: string, value: unknown): unknown {
-  return typeof value === 'bigint' ? value.toString() : value
+/** Stringify session config preserving BigInt types for jsonRevivers on the CLI side.
+ *  Uses dapp-client's jsonReplacers which wraps BigInts in a recoverable format. */
+function safeStringifyConfig(config: unknown): string {
+  try {
+    return JSON.stringify(config, jsonReplacers)
+  } catch {
+    // Fallback: simple BigInt→string (CLI will get strings instead of BigInts)
+    return JSON.stringify(config, (_k, v) => typeof v === 'bigint' ? v.toString() : v)
+  }
 }
 
 /** Normalize identity signature to hex string.
