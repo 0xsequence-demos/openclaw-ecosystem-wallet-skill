@@ -15,14 +15,14 @@ pnpm install && pnpm build && pnpm test
 pnpm dev:worker
 
 # Connect a wallet (opens browser)
-pnpm cli:connect -- --name mywall --token-limits "USDC:50"
+pnpm cli:connect --name mywall --token-limits "USDC:50"
 
 # Check balances
-pnpm cli:balances -- --name mywall
+pnpm cli:balances --name mywall
 
 # Send tokens
-pnpm cli:send-native -- --name mywall --to 0x... --amount 0.001 --broadcast
-pnpm cli:send-token -- --name mywall --symbol USDC --to 0x... --amount 1 --broadcast
+pnpm cli:send-native --name mywall --to 0x... --amount 0.001 --broadcast
+pnpm cli:send-token --name mywall --symbol USDC --to 0x... --amount 1 --broadcast
 ```
 
 ## All Commands
@@ -43,20 +43,20 @@ All CLI commands accept `--help` for usage details.
 
 | Command | Description |
 |---------|-------------|
-| `pnpm cli -- --help` | Show all CLI commands |
-| `pnpm cli:connect -- --name <n>` | Connect wallet via browser |
+| `pnpm cli --help` | Show all CLI commands |
+| `pnpm cli:connect --name <n>` | Connect wallet via browser |
 | `pnpm cli:sessions` | List stored sessions |
-| `pnpm cli:address -- --name <n>` | Show wallet address |
-| `pnpm cli:balances -- --name <n>` | Show token balances |
-| `pnpm cli:send-native -- --name <n> --to <addr> --amount <amt> --broadcast` | Send native token (POL/ETH) |
-| `pnpm cli:send-token -- --name <n> --symbol USDC --to <addr> --amount <amt> --broadcast` | Send token by symbol |
-| `pnpm cli:send-erc20 -- --name <n> --token <addr> --decimals <d> --to <addr> --amount <amt> --broadcast` | Send ERC20 by address |
-| `pnpm cli:disconnect -- --name <n>` | Remove stored session |
+| `pnpm cli:address --name <n>` | Show wallet address |
+| `pnpm cli:balances --name <n>` | Show token balances |
+| `pnpm cli:send-native --name <n> --to <addr> --amount <amt> --broadcast` | Send native token (POL/ETH) |
+| `pnpm cli:send-token --name <n> --symbol USDC --to <addr> --amount <amt> --broadcast` | Send token by symbol |
+| `pnpm cli:send-erc20 --name <n> --token <addr> --decimals <d> --to <addr> --amount <amt> --broadcast` | Send ERC20 by address |
+| `pnpm cli:disconnect --name <n>` | Remove stored session |
 
 ### Connect Options
 
 ```bash
-pnpm cli:connect -- \
+pnpm cli:connect \
   --name mywall \
   --chain polygon \
   --native-limit 2 \
