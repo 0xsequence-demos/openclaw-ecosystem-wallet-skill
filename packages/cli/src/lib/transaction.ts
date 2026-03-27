@@ -15,6 +15,7 @@ export interface Transaction {
 export async function sendTransaction(
   session: SessionPayload,
   transactions: Transaction[],
+  onProgress?: (step: string) => void,
 ): Promise<{ txHash: string }> {
   const { statePath } = await buildCliState(session)
   const passphrase = getPassphrase()
@@ -48,6 +49,7 @@ export async function sendTransaction(
     const cliEnv = buildCliEnv(session, accessKey)
 
     // Step 1: Get fee options
+    onProgress?.('Getting fee options…')
     const { stdout: feeStdout } = await execFileAsync('node', [
       bin, ...commonArgs,
       'fee-options',
@@ -67,6 +69,7 @@ export async function sendTransaction(
     const feeOption = feeOptions.find(isNative) || feeOptions[0]
 
     // Step 2: Send transaction
+    onProgress?.('Broadcasting transaction…')
     const { stdout } = await execFileAsync('node', [
       bin, ...commonArgs,
       'send-transaction',

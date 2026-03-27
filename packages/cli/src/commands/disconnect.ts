@@ -1,5 +1,6 @@
 import { Command } from 'commander'
 import * as keychain from '../lib/keychain.js'
+import { ui } from '../lib/ui.js'
 
 export const disconnectCommand = new Command('disconnect')
   .description('Remove a stored wallet session')
@@ -7,8 +8,8 @@ export const disconnectCommand = new Command('disconnect')
   .action(async (opts) => {
     const deleted = await keychain.deleteSession(opts.name)
     if (deleted) {
-      console.log(`Session "${opts.name}" removed.`)
+      console.log(ui.success(`Session "${opts.name}" removed.`))
     } else {
-      console.log(`No session found for "${opts.name}".`)
+      console.log(ui.warn(`No session found for "${opts.name}".`))
     }
   })

@@ -1,11 +1,11 @@
 import { Command } from 'commander'
 import { generateX25519Keypair, decryptSession, bytesToHex, hexToBytes, base64urlToBytes } from '@polygon-agent/shared'
 import open from 'open'
-import ora from 'ora'
 import prompts from 'prompts'
 import * as relay from '../lib/relay-client.js'
 import * as keychain from '../lib/keychain.js'
 import { RELAY_URL, resolveChainId } from '../lib/config.js'
+import { ui } from '../lib/ui.js'
 
 export const connectCommand = new Command('connect')
   .description('Connect a Polygon Ecosystem Wallet via browser')
@@ -25,9 +25,9 @@ export const connectCommand = new Command('connect')
       const cli_pk_hex = bytesToHex(cli_pk)
 
       // 2. Register with relay
-      const spinner = ora('Registering with relay...').start()
+      const spinner = ui.spinner('Registering with relay…')
       const request_id = await relay.createRequest(cli_pk_hex)
-      spinner.succeed(`Registered: ${request_id}`)
+      spinner.succeed('Registered with relay')
 
       // 3. Open browser
       const relayUrl = opts.relayUrl ?? RELAY_URL
@@ -39,13 +39,13 @@ export const connectCommand = new Command('connect')
 
       if (opts.browser !== false) {
         await open(connectUrl)
-        console.log(`\nBrowser opened. If it didn't, visit:\n  ${connectUrl}\n`)
+        console.log(ui.info(`Browser opened. If it didn't, visit:\n  ${connectUrl}\n`))
       } else {
-        console.log(`\nOpen this URL in your browser:\n  ${connectUrl}\n`)
+        console.log(ui.info(`Open this URL in your browser:\n  ${connectUrl}\n`))
       }
 
       // 4. Poll for status
-      const pollSpinner = ora('Waiting for wallet connection...').start()
+      const pollSpinner = ui.spinner('Waiting for wallet connection…')
       const deadline = Date.now() + 300_000
       let status = 'pending'
       while (status === 'pending' && Date.now() < deadline) {
@@ -62,7 +62,7 @@ export const connectCommand = new Command('connect')
         cli_sk.fill(0)
         process.exit(1)
       }
-      pollSpinner.succeed('Session approved in browser.')
+      pollSpinner.succeed('Session approved in browser')
 
       // 5. Prompt for code
       const { code } = await prompts({
@@ -79,7 +79,7 @@ export const connectCommand = new Command('connect')
       }
 
       // 6. Retrieve encrypted payload
-      const retrieveSpinner = ora('Verifying code...').start()
+      const retrieveSpinner = ui.spinner('Verifying code…')
       let payload
       try {
         payload = await relay.retrieve(request_id, code)
@@ -88,7 +88,7 @@ export const connectCommand = new Command('connect')
         cli_sk.fill(0)
         process.exit(1)
       }
-      retrieveSpinner.succeed('Code verified.')
+      retrieveSpinner.succeed('Code verified')
 
       // 7. Decrypt
       const wallet_pk = hexToBytes(payload.wallet_pk)
@@ -98,18 +98,22 @@ export const connectCommand = new Command('connect')
       const session = decryptSession(cli_sk, cli_pk, wallet_pk, nonce, ciphertext, code)
 
       // 8. Store in Keychain
+      const storeSpinner = ui.spinner('Storing session…')
       await keychain.storeSession(opts.name, session)
+      storeSpinner.succeed('Session stored securely')
 
       // 9. Print summary
-      console.log(`\n✓ Connected: ${session.wallet_address}`)
-      console.log(`  Chain: ${session.chain_id}`)
-      console.log(`  Session expires: ${new Date(session.expiry * 1000).toLocaleString()}`)
-      console.log(`  Stored as: "${opts.name}"`)
+      console.log('\n' + ui.success(`Connected`))
+      ui.kv('Wallet', ui.address(session.wallet_address))
+      ui.kv('Chain', ui.chain(session.chain_id))
+      ui.kv('Expires', new Date(session.expiry * 1000).toLocaleString())
+      ui.kv('Alias', `"${opts.name}"`)
+      console.log()
 
       // 10. Cleanup
       cli_sk.fill(0)
     } catch (e) {
-      console.error(e instanceof Error ? e.message : 'Connection failed')
+      console.error(ui.error(e instanceof Error ? e.message : 'Connection failed'))
       process.exit(1)
     }
   })

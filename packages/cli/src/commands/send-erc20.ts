@@ -4,6 +4,7 @@ import { sendTransaction } from '../lib/transaction.js'
 import { parseUnitsString } from '../lib/config.js'
 import { checkTokenBalance } from '../lib/balances.js'
 import { handleErrors } from '../lib/errors.js'
+import { ui } from '../lib/ui.js'
 
 export const sendErc20Command = new Command('send-erc20')
   .description('Send ERC20 token by contract address')
@@ -17,7 +18,7 @@ export const sendErc20Command = new Command('send-erc20')
   .action(handleErrors(async (opts) => {
     const session = await keychain.loadSession(opts.name)
     if (!session) {
-      console.error(`No session found for "${opts.name}".`)
+      console.error(ui.error(`No session found for "${opts.name}".`))
       process.exit(1)
     }
 
@@ -32,13 +33,29 @@ export const sendErc20Command = new Command('send-erc20')
     const tx = { to: opts.token, data }
 
     if (!opts.broadcast) {
-      console.log('Dry run (add --broadcast to send):')
-      console.log(JSON.stringify(tx, null, 2))
+      ui.dryRun([
+        ['Token', ui.address(opts.token)],
+        ['To', ui.address(opts.to)],
+        ['Amount', ui.amount(opts.amount) + ` (${rawAmount} raw)`],
+        ['Decimals', String(decimals)],
+        ['From', ui.shortAddress(session.wallet_address)],
+        ['Chain', ui.chain(session.chain_id)],
+      ])
       return
     }
 
+    let spinner = ui.spinner('Checking balance…')
     await checkTokenBalance(session, opts.token, opts.token, decimals, rawAmount.toString())
+    spinner.succeed('Balance sufficient')
 
-    const result = await sendTransaction(session, [tx])
-    console.log(`Transaction sent: ${result.txHash}`)
+    spinner = ui.spinner('Sending transaction…')
+    const result = await sendTransaction(session, [tx], (step) => {
+      spinner.text = step
+    })
+    spinner.succeed('Transaction confirmed')
+
+    ui.txResult(result.txHash, session.chain_id, [
+      ['Amount', ui.amount(opts.amount)],
+      ['To', ui.address(opts.to)],
+    ])
   }))

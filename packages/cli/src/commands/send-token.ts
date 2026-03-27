@@ -5,6 +5,7 @@ import { resolveErc20BySymbol } from '../lib/token-directory.js'
 import { parseUnitsString } from '../lib/config.js'
 import { checkTokenBalance } from '../lib/balances.js'
 import { handleErrors } from '../lib/errors.js'
+import { ui } from '../lib/ui.js'
 
 export const sendTokenCommand = new Command('send-token')
   .description('Send token by symbol (resolved via token directory)')
@@ -17,17 +18,17 @@ export const sendTokenCommand = new Command('send-token')
   .action(handleErrors(async (opts) => {
     const session = await keychain.loadSession(opts.name)
     if (!session) {
-      console.error(`No session found for "${opts.name}".`)
+      console.error(ui.error(`No session found for "${opts.name}".`))
       process.exit(1)
     }
 
+    let spinner = ui.spinner(`Resolving ${opts.symbol}…`)
     const token = await resolveErc20BySymbol(session.chain_id, opts.symbol)
     if (!token) {
-      console.error(`Token "${opts.symbol}" not found for chain ${session.chain_id}`)
+      spinner.fail(`Token "${opts.symbol}" not found for chain ${session.chain_id}`)
       process.exit(1)
     }
-
-    console.log(`Resolved: ${token.name} (${token.symbol}) at ${token.address}, ${token.decimals} decimals`)
+    spinner.succeed(`${ui.token(token.symbol)} — ${token.name} (${token.decimals} decimals)`)
 
     const rawAmount = BigInt(parseUnitsString(opts.amount, token.decimals))
     const selector = 'a9059cbb'
@@ -38,13 +39,28 @@ export const sendTokenCommand = new Command('send-token')
     const tx = { to: token.address, data }
 
     if (!opts.broadcast) {
-      console.log('Dry run (add --broadcast to send):')
-      console.log(JSON.stringify(tx, null, 2))
+      ui.dryRun([
+        ['Token', ui.token(token.symbol) + ` at ${ui.shortAddress(token.address)}`],
+        ['To', ui.address(opts.to)],
+        ['Amount', ui.amount(opts.amount) + ` ${token.symbol}`],
+        ['From', ui.shortAddress(session.wallet_address)],
+        ['Chain', ui.chain(session.chain_id)],
+      ])
       return
     }
 
+    spinner = ui.spinner(`Checking ${token.symbol} balance…`)
     await checkTokenBalance(session, token.address, token.symbol, token.decimals, rawAmount.toString())
+    spinner.succeed('Balance sufficient')
 
-    const result = await sendTransaction(session, [tx])
-    console.log(`Transaction sent: ${result.txHash}`)
+    spinner = ui.spinner('Sending transaction…')
+    const result = await sendTransaction(session, [tx], (step) => {
+      spinner.text = step
+    })
+    spinner.succeed('Transaction confirmed')
+
+    ui.txResult(result.txHash, session.chain_id, [
+      ['Amount', ui.amount(opts.amount) + ` ${ui.token(token.symbol)}`],
+      ['To', ui.address(opts.to)],
+    ])
   }))

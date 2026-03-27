@@ -4,6 +4,7 @@ import { sendTransaction } from '../lib/transaction.js'
 import { parseUnitsString } from '../lib/config.js'
 import { checkNativeBalance } from '../lib/balances.js'
 import { handleErrors } from '../lib/errors.js'
+import { ui } from '../lib/ui.js'
 
 const VALUE_FORWARDER = '0xABAAd93EeE2a569cF0632f39B10A9f5D734777ca'
 const FORWARD_VALUE_SELECTOR = '0x98f850f1'
@@ -22,7 +23,7 @@ export const sendNativeCommand = new Command('send-native')
   .action(handleErrors(async (opts) => {
     const session = await keychain.loadSession(opts.name)
     if (!session) {
-      console.error(`No session found for "${opts.name}".`)
+      console.error(ui.error(`No session found for "${opts.name}".`))
       process.exit(1)
     }
 
@@ -32,16 +33,29 @@ export const sendNativeCommand = new Command('send-native')
     const tx = { to: VALUE_FORWARDER, value, data }
 
     if (!opts.broadcast) {
-      console.log('Dry run (add --broadcast to send):')
-      console.log(`  To: ${opts.to}`)
-      console.log(`  Amount: ${opts.amount} (${wei} wei)`)
-      console.log(`  Via: ValueForwarder ${VALUE_FORWARDER}`)
+      ui.dryRun([
+        ['To', ui.address(opts.to)],
+        ['Amount', ui.amount(opts.amount) + ` (${wei} wei)`],
+        ['Via', `ValueForwarder ${ui.address(VALUE_FORWARDER)}`],
+        ['From', ui.shortAddress(session.wallet_address)],
+        ['Chain', ui.chain(session.chain_id)],
+      ])
       return
     }
 
-    // Check balance before sending
+    let spinner = ui.spinner('Checking balance…')
     await checkNativeBalance(session, wei)
+    spinner.succeed('Balance sufficient')
 
-    const result = await sendTransaction(session, [tx])
-    console.log(`Transaction sent: ${result.txHash}`)
+    spinner = ui.spinner('Getting fee options…')
+    // sendTransaction handles fee options + broadcast internally
+    const result = await sendTransaction(session, [tx], (step) => {
+      spinner.text = step
+    })
+    spinner.succeed('Transaction confirmed')
+
+    ui.txResult(result.txHash, session.chain_id, [
+      ['Amount', ui.amount(opts.amount) + ' native'],
+      ['To', ui.address(opts.to)],
+    ])
   }))
