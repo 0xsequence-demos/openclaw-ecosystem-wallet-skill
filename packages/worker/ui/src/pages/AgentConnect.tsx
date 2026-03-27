@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { CodeDisplay } from '../components/CodeDisplay.js'
 import { useEcosystemWallet } from '../hooks/useEcosystemWallet.js'
 import { useSessionEncryption } from '../hooks/useSessionEncryption.js'
@@ -43,6 +43,15 @@ export function AgentConnect({ rid }: { rid: string }) {
       setErrorMsg(e instanceof Error ? e.message : 'Connection failed')
       setPhase('error')
     }
+  }
+
+  const handleComplete = useCallback(() => {
+    setPhase('done')
+  }, [])
+
+  async function handleDisconnect() {
+    await wallet.disconnect()
+    window.location.reload()
   }
 
   return (
@@ -96,16 +105,24 @@ export function AgentConnect({ rid }: { rid: string }) {
           </div>
         )}
 
-        {phase === 'code_display' && encryption.code && (
+        {phase === 'code_display' && encryption.code && wallet.walletAddress && (
           <div className="section">
-            <CodeDisplay code={encryption.code} />
+            <CodeDisplay
+              code={encryption.code}
+              rid={rid}
+              walletAddress={wallet.walletAddress}
+              onComplete={handleComplete}
+              onDisconnect={handleDisconnect}
+            />
           </div>
         )}
 
-        {phase === 'done' && (
+        {phase === 'done' && wallet.walletAddress && (
           <div className="section">
-            <p className="label">Status</p>
-            <p className="text">Your agent is now connected. You can close this tab.</p>
+            <p className="label">Connected</p>
+            <div className="mono" style={{ marginBottom: 12 }}>{wallet.walletAddress}</div>
+            <p className="text">Agent session is active. You can close this tab.</p>
+            <button className="button secondary" onClick={handleDisconnect}>Disconnect</button>
           </div>
         )}
 

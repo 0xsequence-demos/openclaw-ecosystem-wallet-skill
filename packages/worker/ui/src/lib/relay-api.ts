@@ -10,6 +10,20 @@ export async function fetchCliPublicKey(
   return res.json()
 }
 
+export async function pollRelayStatus(
+  rid: string,
+): Promise<'pending' | 'ready' | 'gone'> {
+  try {
+    const res = await fetch(`${RELAY_BASE}/api/relay/status/${rid}`)
+    if (res.status === 404) return 'gone'
+    if (!res.ok) return 'gone'
+    const data = await res.json() as { status: string }
+    return data.status as 'pending' | 'ready'
+  } catch {
+    return 'gone'
+  }
+}
+
 export async function postEncryptedSession(
   rid: string,
   payload: RelaySessionPost,
