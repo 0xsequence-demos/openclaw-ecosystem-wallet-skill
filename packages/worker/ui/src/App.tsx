@@ -5,10 +5,27 @@ export function App() {
   const rid = params.get('rid')
 
   if (!rid) {
-    return <div style={{ padding: '2rem', fontFamily: 'system-ui' }}>
-      <h1>Polygon Agent Wallet</h1>
-      <p>Missing <code>rid</code> parameter. This page should be opened from the CLI.</p>
-    </div>
+    return (
+      <div className="page">
+        <div className="card">
+          <div className="brand">
+            <div className="dot" />
+            <div>
+              <div className="title">Polygon Agent</div>
+              <div className="subtitle">Wallet Connection</div>
+            </div>
+          </div>
+          <div className="section">
+            <p className="text">
+              Missing <code className="mono">rid</code> parameter. This page should be opened from the CLI.
+            </p>
+            <p className="hint">
+              Run: <code>polygon-agent connect</code>
+            </p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return <AgentConnect rid={rid} />

@@ -25,22 +25,17 @@ export function CodeDisplay({ code }: Props) {
   const seconds = secondsLeft % 60
 
   return (
-    <div style={{ textAlign: 'center' }}>
-      <h2>Session Approved</h2>
-      <p>Enter this code in your terminal:</p>
-      <div style={{
-        fontSize: '3rem',
-        fontFamily: 'monospace',
-        letterSpacing: '0.5em',
-        padding: '1rem',
-        margin: '1rem 0',
-        background: '#f0f0f0',
-        borderRadius: '8px',
-      }}>
-        {code}
-      </div>
-      <p>Expires in {minutes}:{seconds.toString().padStart(2, '0')}</p>
-      {secondsLeft === 0 && <p style={{ color: 'red' }}>Code expired. Please try again.</p>}
+    <div>
+      <p className="label">Enter this code in your terminal</p>
+      <div className="code-box">{code}</div>
+      <p className="countdown">
+        {secondsLeft > 0
+          ? `Expires in ${minutes}:${seconds.toString().padStart(2, '0')}`
+          : ''}
+      </p>
+      {secondsLeft === 0 && (
+        <p className="error">Code expired. Run connect again to start a new session.</p>
+      )}
     </div>
   )
 }

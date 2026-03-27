@@ -7,6 +7,7 @@
   --border: rgba(255, 255, 255, 0.12);
   --text: rgba(255, 255, 255, 0.92);
   --muted: rgba(255, 255, 255, 0.68);
+  --error: #ff6b6b;
 }
 
 body {
@@ -15,8 +16,9 @@ body {
     radial-gradient(900px 500px at 80% 20%, rgba(130, 71, 229, 0.16), transparent 55%),
     var(--bg);
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
-    "Segoe UI Emoji";
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .page {
@@ -29,12 +31,12 @@ body {
 
 .card {
   width: 100%;
-  max-width: 720px;
+  max-width: 520px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-  padding: 24px;
+  padding: 28px;
   backdrop-filter: blur(10px);
 }
 
@@ -42,7 +44,7 @@ body {
   display: flex;
   gap: 14px;
   align-items: center;
-  margin-bottom: 18px;
+  margin-bottom: 6px;
 }
 
 .dot {
@@ -51,6 +53,7 @@ body {
   border-radius: 999px;
   background: var(--poly);
   box-shadow: 0 0 0 6px rgba(130, 71, 229, 0.18);
+  flex-shrink: 0;
 }
 
 .title {
@@ -77,21 +80,11 @@ body {
   margin-bottom: 10px;
 }
 
-.input {
-  width: 100%;
-  height: 54px;
-  font-size: 18px;
-  padding: 0 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(0, 0, 0, 0.25);
-  color: var(--text);
-  outline: none;
-}
-
-.input:focus {
-  border-color: rgba(130, 71, 229, 0.65);
-  box-shadow: 0 0 0 4px rgba(130, 71, 229, 0.18);
+.text {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0 0 12px;
 }
 
 .button {
@@ -102,74 +95,75 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(130, 71, 229, 0.9);
   color: white;
+  font-size: 15px;
   font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.button:hover {
+  opacity: 0.85;
 }
 
 .button.secondary {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.code-box {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 2.8rem;
+  letter-spacing: 0.4em;
+  text-align: center;
+  padding: 20px;
+  margin: 16px 0;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: white;
+}
+
+.countdown {
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 14px;
-  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  padding: 8px 12px;
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
+  border-radius: 8px;
   overflow-x: auto;
-}
-
-.text {
-  font-size: 14px;
-  color: var(--muted);
-  margin-bottom: 10px;
-}
-
-.textarea {
-  width: 100%;
-  height: 150px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(0, 0, 0, 0.25);
-  color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12px;
-}
-
-.balances {
-  margin-top: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.18);
-  border-radius: 12px;
-  padding: 10px 12px;
-}
-
-.balanceRow {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-}
-
-.balanceLabel {
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-}
-
-.balanceValue {
-  font-weight: 650;
-}
-
-.hint {
-  margin-top: 10px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.55);
+  word-break: break-all;
 }
 
 .error {
-  margin-top: 10px;
   font-size: 13px;
-  color: #ff6b6b;
+  color: var(--error);
+  margin: 10px 0;
+}
+
+.hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 10px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--poly);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

@@ -1,7 +1,0 @@
-name = "moltbot-ecosystem-wallet"
-main = "worker.mjs"
-compatibility_date = "2026-02-02"
-
-[assets]
-directory = "./dist"
-binding = "ASSETS"

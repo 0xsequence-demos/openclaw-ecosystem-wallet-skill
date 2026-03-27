@@ -31,14 +31,11 @@ export function AgentConnect({ rid }: { rid: string }) {
       })
   }, [rid])
 
-  // Single action: connect wallet + approve session + encrypt + post to relay
   async function handleConnect() {
     try {
-      // dappClient.connect() handles both wallet connection AND session approval in the popup
       await wallet.connect(chainId, nativeLimit, tokenLimits)
       setPhase('encrypting')
 
-      // Extract session material and encrypt + post to relay in one step
       const session = await wallet.getSessionMaterial()
       await encryption.encrypt(rid, session, cliPk!)
       setPhase('code_display')
@@ -49,61 +46,84 @@ export function AgentConnect({ rid }: { rid: string }) {
   }
 
   return (
-    <div style={{ maxWidth: '480px', margin: '2rem auto', padding: '0 1rem', fontFamily: 'system-ui' }}>
-      <h1>Polygon Agent</h1>
-
-      {phase === 'loading' && <p>Validating request...</p>}
-
-      {phase === 'wallet_connect' && (
-        <div>
-          <h2>Connect Your Wallet</h2>
-          <p>This will open your Polygon Ecosystem Wallet to approve an agent session.</p>
-          {wallet.status === 'idle' && (
-            <button onClick={handleConnect}>Connect Wallet</button>
-          )}
-          {wallet.status === 'connecting' && <p>Connecting... (check your wallet popup)</p>}
-          {wallet.error && (
-            <div>
-              <p style={{ color: 'red' }}>{wallet.error}</p>
-              {wallet.error.includes('already exists') && (
-                <button onClick={async () => {
-                  await wallet.disconnect()
-                  setErrorMsg(null)
-                }}>Disconnect Previous Session</button>
-              )}
-            </div>
-          )}
+    <div className="page">
+      <div className="card">
+        <div className="brand">
+          <div className="dot" />
+          <div>
+            <div className="title">Polygon Agent</div>
+            <div className="subtitle">Wallet Connection</div>
+          </div>
         </div>
-      )}
 
-      {phase === 'encrypting' && <p>Securing session...</p>}
+        {phase === 'loading' && (
+          <div className="section">
+            <p className="text"><span className="spinner" />Validating request...</p>
+          </div>
+        )}
 
-      {phase === 'code_display' && encryption.code && (
-        <CodeDisplay code={encryption.code} />
-      )}
+        {phase === 'wallet_connect' && (
+          <div className="section">
+            <p className="text">
+              Connect your Polygon Ecosystem Wallet to authorize an agent session.
+              This will open a popup where you can review and approve permissions.
+            </p>
+            {wallet.status === 'idle' && (
+              <button className="button" onClick={handleConnect}>Connect Wallet</button>
+            )}
+            {wallet.status === 'connecting' && (
+              <button className="button" disabled>
+                <span className="spinner" />Connecting...
+              </button>
+            )}
+            {wallet.error && (
+              <>
+                <p className="error">{wallet.error}</p>
+                {wallet.error.includes('already exists') && (
+                  <button className="button secondary" onClick={async () => {
+                    await wallet.disconnect()
+                    setErrorMsg(null)
+                  }}>Disconnect Previous Session</button>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
-      {phase === 'done' && (
-        <div>
-          <h2>Connected!</h2>
-          <p>Your agent is now connected. You can close this tab.</p>
-        </div>
-      )}
+        {phase === 'encrypting' && (
+          <div className="section">
+            <p className="text"><span className="spinner" />Securing session...</p>
+          </div>
+        )}
 
-      {phase === 'error' && (
-        <div>
-          <h2>Error</h2>
-          <p style={{ color: 'red' }}>{errorMsg}</p>
-          {errorMsg?.includes('already exists') ? (
-            <button onClick={async () => {
-              await wallet.disconnect()
-              setErrorMsg(null)
-              setPhase('wallet_connect')
-            }}>Disconnect &amp; Retry</button>
-          ) : (
-            <button onClick={() => window.location.reload()}>Try Again</button>
-          )}
-        </div>
-      )}
+        {phase === 'code_display' && encryption.code && (
+          <div className="section">
+            <CodeDisplay code={encryption.code} />
+          </div>
+        )}
+
+        {phase === 'done' && (
+          <div className="section">
+            <p className="label">Status</p>
+            <p className="text">Your agent is now connected. You can close this tab.</p>
+          </div>
+        )}
+
+        {phase === 'error' && (
+          <div className="section">
+            <p className="error">{errorMsg}</p>
+            {errorMsg?.includes('already exists') ? (
+              <button className="button secondary" onClick={async () => {
+                await wallet.disconnect()
+                setErrorMsg(null)
+                setPhase('wallet_connect')
+              }}>Disconnect &amp; Retry</button>
+            ) : (
+              <button className="button secondary" onClick={() => window.location.reload()}>Try Again</button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
