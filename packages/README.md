@@ -97,6 +97,8 @@ This exercises:
 
 ### SPA (`worker/ui/.env`)
 
+Production values are committed in `worker/ui/.env.production` (picked up automatically by `vite build`). For local dev, copy `.env.example` to `.env`.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `VITE_WALLET_URL` | `https://wallet.polygon.technology` | Ecosystem Wallet URL |
@@ -104,15 +106,13 @@ This exercises:
 | `VITE_DAPP_ORIGIN` | `window.location.origin` | DApp origin for CORS |
 | `VITE_RELAYER_URL` | (none) | Optional custom relayer |
 | `VITE_NODES_URL` | `https://nodes.sequence.app` | Node gateway |
-| `VITE_INDEXER_ACCESS_KEY` | (empty) | Indexer key for balance queries |
 
 ### CLI (`cli/.env`)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `POLYGON_AGENT_RELAY_URL` | `https://relay.polygon.agent.xyz` | Relay endpoint |
-| `SEQUENCE_INDEXER_ACCESS_KEY` | (none) | Required for `balances` command |
-| `SEQUENCE_INDEXER_URL` | IndexerGateway | Optional custom indexer endpoint |
+| `SEQUENCE_PROJECT_ACCESS_KEY` | (none) | For balances + transaction sending |
 
 ### Worker (`wrangler.toml` or dashboard)
 
@@ -121,7 +121,6 @@ This exercises:
 | `ECOSYSTEM_WALLET_URL` | `https://wallet.polygon.technology` | Set in wrangler.toml |
 | `DEFAULT_CHAIN_ID` | `137` | Set in wrangler.toml |
 | `PROJECT_ACCESS_KEY` | (none) | Set via `wrangler secret` |
-| `INDEXER_ACCESS_KEY` | (none) | Set via `wrangler secret` |
 
 ## Architecture
 

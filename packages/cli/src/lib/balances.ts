@@ -9,7 +9,7 @@ interface TokenBalance {
 }
 
 export async function fetchBalances(session: SessionPayload): Promise<TokenBalance[]> {
-  const indexerKey = getEnv('SEQUENCE_INDEXER_ACCESS_KEY', session.project_access_key)
+  const indexerKey = session.project_access_key || getEnv('SEQUENCE_PROJECT_ACCESS_KEY')
   const indexerUrl = process.env.SEQUENCE_INDEXER_URL ??
     'https://indexer.sequence.app/rpc/IndexerGateway/GetTokenBalancesSummary'
 

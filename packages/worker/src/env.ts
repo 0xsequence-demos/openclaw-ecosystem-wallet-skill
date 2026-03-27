@@ -5,6 +5,5 @@ export interface Env {
   ASSETS?: Fetcher
   ECOSYSTEM_WALLET_URL: string
   PROJECT_ACCESS_KEY?: string
-  INDEXER_ACCESS_KEY?: string
   DEFAULT_CHAIN_ID: string
 }
