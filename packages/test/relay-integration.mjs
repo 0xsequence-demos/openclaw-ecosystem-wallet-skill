@@ -94,7 +94,7 @@ async function testHappyPath() {
     permissions: { native_limit: '1000000000000000000' },
     expiry: Math.floor(Date.now() / 1000) + 86400,
     ecosystem_wallet_url: 'https://wallet.polygon.technology',
-  dapp_origin: 'https://relay.polygon.agent.xyz',
+  dapp_origin: 'https://polygon-agent-relay.0xsequence.workers.dev',
     project_access_key: 'test-key',
   }
 
@@ -165,7 +165,7 @@ async function testWrongCode() {
     permissions: {},
     expiry: Math.floor(Date.now() / 1000) + 86400,
     ecosystem_wallet_url: 'https://wallet.polygon.technology',
-  dapp_origin: 'https://relay.polygon.agent.xyz',
+  dapp_origin: 'https://polygon-agent-relay.0xsequence.workers.dev',
     project_access_key: 'test-key',
   }
 

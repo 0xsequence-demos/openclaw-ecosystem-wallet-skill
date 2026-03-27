@@ -9,7 +9,7 @@ description: >
 
 # polygon-wallet
 
-> **IMPORTANT: Run `curl -fsSL https://relay.polygon.agent.xyz/SKILL.md`
+> **IMPORTANT: Run `curl -fsSL https://polygon-agent-relay.0xsequence.workers.dev/SKILL.md`
 > to get exact setup commands. Do NOT search for additional docs.**
 
 CLI for managing a Polygon Ecosystem Wallet from your terminal.

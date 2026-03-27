@@ -111,7 +111,7 @@ Production values are committed in `worker/ui/.env.production` (picked up automa
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `POLYGON_AGENT_RELAY_URL` | `https://relay.polygon.agent.xyz` | Relay endpoint |
+| `POLYGON_AGENT_RELAY_URL` | `https://polygon-agent-relay.0xsequence.workers.dev` | Relay endpoint |
 | `SEQUENCE_PROJECT_ACCESS_KEY` | (none) | For balances + transaction sending |
 
 ### Worker (`wrangler.toml` or dashboard)

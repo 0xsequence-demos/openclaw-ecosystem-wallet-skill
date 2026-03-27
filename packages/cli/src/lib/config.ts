@@ -1,6 +1,6 @@
 import 'dotenv/config'
 
-export const RELAY_URL = process.env.POLYGON_AGENT_RELAY_URL ?? 'https://relay.polygon.agent.xyz'
+export const RELAY_URL = process.env.POLYGON_AGENT_RELAY_URL ?? 'https://polygon-agent-relay.0xsequence.workers.dev'
 export const KEYCHAIN_SERVICE = 'polygon.agent.wallet'
 
 export function getEnv(key: string, fallback?: string): string {
