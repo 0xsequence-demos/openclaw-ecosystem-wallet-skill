@@ -1,0 +1,23 @@
+{
+  "private": true,
+  "scripts": {
+    "install": "cd packages && pnpm install",
+    "build": "cd packages && pnpm build",
+    "test": "cd packages && pnpm test",
+    "dev": "cd packages && pnpm dev",
+    "dev:worker": "cd packages && pnpm dev:worker",
+    "dev:ui": "cd packages && pnpm dev:ui",
+    "test:relay": "cd packages && pnpm test:relay",
+    "simulate:browser": "cd packages && pnpm simulate:browser",
+    "cli": "node packages/cli/bin/polygon-agent.mjs",
+    "cli:connect": "node packages/cli/bin/polygon-agent.mjs connect",
+    "cli:sessions": "node packages/cli/bin/polygon-agent.mjs sessions",
+    "cli:balances": "node packages/cli/bin/polygon-agent.mjs balances",
+    "cli:address": "node packages/cli/bin/polygon-agent.mjs address",
+    "cli:disconnect": "node packages/cli/bin/polygon-agent.mjs disconnect",
+    "cli:send-native": "node packages/cli/bin/polygon-agent.mjs send-native",
+    "cli:send-token": "node packages/cli/bin/polygon-agent.mjs send-token",
+    "cli:send-erc20": "node packages/cli/bin/polygon-agent.mjs send-erc20",
+    "deploy": "cd packages/worker && pnpm deploy"
+  }
+}
